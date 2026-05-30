@@ -873,29 +873,149 @@ async function getYouTubePlaylistMetadataPublic(playlistId: string): Promise<any
     const tracks: any[] = [];
     const seenIds = new Set<string>();
 
-    const regex = /\{"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\].*?"shortBylineText":\{"runs":\[\{"text":"([^"]+)"\}/g;
-    let match;
-    while ((match = regex.exec(html)) !== null && tracks.length < 100) {
-      const videoId = match[1];
-      const origTitle = match[2];
-      const origChannel = match[3];
+    const startKeyword = "ytInitialData = ";
+    const startIdx = html.indexOf(startKeyword);
+    if (startIdx !== -1) {
+      try {
+        let endIdx = html.indexOf(";</script>", startIdx);
+        if (endIdx === -1) {
+          endIdx = html.indexOf("};", startIdx);
+        }
+        if (endIdx !== -1) {
+          let rawJson = html.substring(startIdx + startKeyword.length, endIdx + 1).trim();
+          if (rawJson.endsWith(";")) {
+            rawJson = rawJson.slice(0, -1);
+          }
+          const data = JSON.parse(rawJson);
 
-      if (seenIds.has(videoId)) continue;
-      seenIds.add(videoId);
+          const recurse = (obj: any) => {
+            if (!obj || typeof obj !== "object") return;
 
-      let songTitle = origTitle;
-      let songArtist = origChannel.replace(" - Topic", "");
-      if (origTitle.includes("-")) {
-        const parts = origTitle.split("-");
-        songArtist = parts[0].trim();
-        songTitle = parts[1].trim();
+            // Handle playlistVideoRenderer
+            if (obj.playlistVideoRenderer) {
+              const render = obj.playlistVideoRenderer;
+              const vId = render.videoId;
+              if (vId && !seenIds.has(vId)) {
+                seenIds.add(vId);
+                const rawTitle = render.title?.runs?.[0]?.text || render.title?.simpleText || "Unknown Title";
+                const rawArtist = render.shortBylineText?.runs?.[0]?.text || "Unknown Artist";
+                
+                let songTitle = rawTitle;
+                let songArtist = rawArtist.replace(" - Topic", "");
+                if (rawTitle.includes("-")) {
+                  const parts = rawTitle.split("-");
+                  songArtist = parts[0].trim();
+                  songTitle = parts[1].trim();
+                }
+
+                tracks.push({
+                  title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+                  artist: songArtist,
+                  url: `https://music.youtube.com/watch?v=${vId}`
+                });
+              }
+            }
+
+            // Handle playlistItemRenderer (frequent for albums)
+            if (obj.playlistItemRenderer) {
+              const render = obj.playlistItemRenderer;
+              const vId = render.videoId;
+              if (vId && !seenIds.has(vId)) {
+                seenIds.add(vId);
+                const rawTitle = render.title?.runs?.[0]?.text || render.title?.simpleText || "Unknown Title";
+                const rawArtist = render.shortBylineText?.runs?.[0]?.text || "Unknown Artist";
+
+                let songTitle = rawTitle;
+                let songArtist = rawArtist.replace(" - Topic", "");
+                if (rawTitle.includes("-")) {
+                  const parts = rawTitle.split("-");
+                  songArtist = parts[0].trim();
+                  songTitle = parts[1].trim();
+                }
+
+                tracks.push({
+                  title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+                  artist: songArtist,
+                  url: `https://music.youtube.com/watch?v=${vId}`
+                });
+              }
+            }
+
+            for (const key in obj) {
+              if (Object.prototype.hasOwnProperty.call(obj, key) && typeof obj[key] === "object") {
+                recurse(obj[key]);
+              }
+            }
+          };
+
+          recurse(data);
+
+          // Looser JSON search if exact items match nothing and we still want to grab tracks
+          if (tracks.length === 0) {
+            const recurseLoose = (obj: any) => {
+              if (!obj || typeof obj !== "object") return;
+              if (obj.videoId && obj.title && (obj.title.runs || typeof obj.title === "string")) {
+                const vId = obj.videoId;
+                if (vId && vId.length === 11 && !seenIds.has(vId)) {
+                  seenIds.add(vId);
+                  const rawTitle = typeof obj.title === "string" ? obj.title : obj.title?.runs?.[0]?.text || "Unknown Title";
+                  const rawArtist = obj.shortBylineText?.runs?.[0]?.text || obj.author || "Unknown Artist";
+
+                  let songTitle = rawTitle;
+                  let songArtist = rawArtist.replace(" - Topic", "");
+                  if (rawTitle.includes("-")) {
+                    const parts = rawTitle.split("-");
+                    songArtist = parts[0].trim();
+                    songTitle = parts[1].trim();
+                  }
+
+                  tracks.push({
+                    title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+                    artist: songArtist,
+                    url: `https://music.youtube.com/watch?v=${vId}`
+                  });
+                }
+              }
+              for (const key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key) && typeof obj[key] === "object") {
+                  recurseLoose(obj[key]);
+                }
+              }
+            };
+            recurseLoose(data);
+          }
+        }
+      } catch (parseErr) {
+        console.warn("Error parsing public ytInitialData JSON:", parseErr);
       }
+    }
 
-      tracks.push({
-        title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
-        artist: songArtist,
-        url: `https://music.youtube.com/watch?v=${videoId}`
-      });
+    // Fallback to legacy regex checks only if JSON walker found absolutely nothing
+    if (tracks.length === 0) {
+      const regex = /\{"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\].*?"shortBylineText":\{"runs":\[\{"text":"([^"]+)"\}/g;
+      let match;
+      while ((match = regex.exec(html)) !== null && tracks.length < 100) {
+        const videoId = match[1];
+        const origTitle = match[2];
+        const origChannel = match[3];
+
+        if (seenIds.has(videoId)) continue;
+        seenIds.add(videoId);
+
+        let songTitle = origTitle;
+        let songArtist = origChannel.replace(" - Topic", "");
+        if (origTitle.includes("-")) {
+          const parts = origTitle.split("-");
+          songArtist = parts[0].trim();
+          songTitle = parts[1].trim();
+        }
+
+        tracks.push({
+          title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+          artist: songArtist,
+          url: `https://music.youtube.com/watch?v=${videoId}`
+        });
+      }
     }
 
     if (tracks.length === 0) {

@@ -135,8 +135,24 @@ export default function App() {
       <header className="h-16 border-b border-slate-800 flex items-center bg-slate-900/50 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-8">
         <div className="max-w-7xl w-full mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
-              <Music className="w-5 h-5 font-bold" />
+            <div className="w-9 h-9 flex items-center justify-center text-white drop-shadow-[0_0_8px_rgba(168,85,247,0.45)]">
+              <svg viewBox="0 0 500 500" className="w-9 h-9 select-none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="purpleBlueGradReact" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#bf5af2" />
+                    <stop offset="100%" stopColor="#0a84ff" />
+                  </linearGradient>
+                  <radialGradient id="ringGlowReact" cx="50%" cy="50%" r="50%">
+                    <stop offset="70%" stopColor="#18113c" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#090d16" stopOpacity="1" />
+                  </radialGradient>
+                </defs>
+                <circle cx="250" cy="250" r="210" fill="url(#ringGlowReact)" stroke="url(#purpleBlueGradReact)" strokeWidth="15" />
+                <path d="M 250 250 C 210 170, 130 170, 130 250 C 130 330, 210 330, 250 250 C 290 170, 370 170, 370 250 C 370 330, 290 330, 250 250 Z" 
+                      fill="none" stroke="url(#purpleBlueGradReact)" strokeWidth="36" strokeLinecap="round" />
+                <circle cx="180" cy="250" r="20" fill="#0a84ff" />
+                <polygon points="305,225 305,275 345,250" fill="#bf5af2" />
+              </svg>
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-2">
@@ -296,8 +312,50 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900/40 border border-slate-800/60 rounded-2xl text-center min-h-[400px]"
               >
-                <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 text-indigo-400 mb-4 animate-bounce">
-                  <Music className="w-6 h-6" />
+                <div className="w-40 h-40 flex items-center justify-center text-white mb-6 drop-shadow-[0_0_20px_rgba(168,85,247,0.45)]">
+                  <svg viewBox="0 0 500 500" className="w-40 h-40 select-none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <linearGradient id="purpleBlueGradMain" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#bf5af2" />
+                        <stop offset="100%" stopColor="#0a84ff" />
+                      </linearGradient>
+                      <radialGradient id="ringGlowMain" cx="50%" cy="50%" r="50%">
+                        <stop offset="70%" stopColor="#18113c" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="#090d16" stopOpacity="1" />
+                      </radialGradient>
+                    </defs>
+                    <circle cx="250" cy="250" r="210" fill="url(#ringGlowMain)" stroke="url(#purpleBlueGradMain)" strokeWidth="4" />
+                    <circle cx="250" cy="250" r="195" stroke="#bf5af2" strokeWidth="1.5" strokeDasharray="25 15 5 15" strokeOpacity="0.6" fill="none" />
+                    <circle cx="250" cy="250" r="185" stroke="#0a84ff" strokeWidth="1" strokeDasharray="5 10 30 10" strokeOpacity="0.4" fill="none" />
+                    
+                    <path d="M 250 250 C 210 170, 130 170, 130 250 C 130 330, 210 330, 250 250 C 290 170, 370 170, 370 250 C 370 330, 290 330, 250 250 Z" 
+                          fill="none" stroke="url(#purpleBlueGradMain)" strokeWidth="20" strokeLinecap="round" />
+                    <path d="M 250 250 C 210 180, 140 180, 140 250 C 140 320, 210 320, 250 250 C 290 180, 360 180, 360 250 C 360 320, 290 320, 250 250 Z" 
+                          fill="none" stroke="#2a1b5c" strokeWidth="8" strokeLinecap="round" />
+                    <path d="M 250 250 C 210 190, 150 190, 150 250 C 150 310, 210 310, 250 250 C 290 190, 350 190, 350 250 C 350 310, 290 310, 250 250 Z" 
+                          fill="none" stroke="url(#purpleBlueGradMain)" strokeWidth="3" strokeLinecap="round" />
+
+                    <path d="M 175 198 L 190 205 L 175 215" fill="none" stroke="#0a84ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M 325 302 L 310 295 L 325 285" fill="none" stroke="#bf5af2" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+
+                    <path d="M 230 100 A 30 30 0 0 1 270 100 L 270 115 L 260 115 L 250 130 L 240 115 L 230 115 Z" fill="#bf5af2" opacity="0.9" />
+                    <path d="M 242 105 L 252 105 L 252 113 M 244 110 L 258 110" stroke="#090d16" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+
+                    <g transform="translate(210, 355)" fill="#0a84ff" opacity="0.95">
+                      <rect x="0" y="20" width="8" height="20" rx="4" />
+                      <rect x="15" y="5" width="8" height="35" rx="4" fill="url(#purpleBlueGradMain)" />
+                      <rect x="30" y="12" width="8" height="28" rx="4" fill="url(#purpleBlueGradMain)" />
+                      <rect x="45" y="2" width="8" height="38" rx="4" fill="url(#purpleBlueGradMain)" />
+                      <rect x="60" y="15" width="8" height="25" rx="4" />
+                      <rect x="75" y="22" width="8" height="18" rx="4" />
+                    </g>
+
+                    <g transform="translate(160, 235)">
+                      <circle cx="10" cy="22" r="6" fill="#0a84ff" />
+                      <path d="M 16 22 L 16 5 L 28 8 L 28 15 L 16 12" fill="none" stroke="#0a84ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                    <polygon points="310,235 310,265 335,250" fill="#bf5af2" />
+                  </svg>
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">No Music URL Loaded Yet</h3>
                 <p className="text-slate-400 text-sm max-w-sm mb-6">

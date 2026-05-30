@@ -161,28 +161,154 @@ class YouTubeService:
                 raise Exception(f"HTTP request failed with status {res.status_code}")
                 
             html = res.text
-            # Extract videoRenderer items embedded in ytInitialData inside script blocks
-            video_sections = re.findall(
-                r'\{"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\].*?"shortBylineText":\{"runs":\[\{"text":"([^"]+)"\}', 
-                html
-            )
-            
             tracks_data = []
             seen_ids = set()
-            for vid, title, channel in video_sections:
-                if vid in seen_ids:
-                    continue
-                seen_ids.add(vid)
-                parsed_title, artist = self.clean_title(title)
-                if artist == "Unknown Artist":
-                    artist = channel.replace(" - Topic", "")
-                tracks_data.append({
-                    "title": parsed_title,
-                    "artist": artist,
-                    "url": f"https://music.youtube.com/watch?v={vid}"
-                })
+
+            # Attempt JSON-based recursive crawler on ytInitialData
+            start_keyword = "ytInitialData = "
+            start_idx = html.find(start_keyword)
+            if start_idx != -1:
+                try:
+                    end_idx = html.find(";</script>", start_idx)
+                    if end_idx == -1:
+                        end_idx = html.find("};", start_idx)
+                    if end_idx != -1:
+                        raw_json = html[start_idx + len(start_keyword):end_idx + 1].strip()
+                        if raw_json.endswith(";"):
+                            raw_json = raw_json[:-1]
+                        
+                        data = json.loads(raw_json)
+
+                        def recurse(obj):
+                            if not obj or not isinstance(obj, dict):
+                                return
+                            
+                            # playlistVideoRenderer
+                            if "playlistVideoRenderer" in obj:
+                                render = obj["playlistVideoRenderer"]
+                                v_id = render.get("videoId")
+                                if v_id and v_id not in seen_ids:
+                                    seen_ids.add(v_id)
+                                    title = "Unknown Title"
+                                    if "title" in render:
+                                        runs = render["title"].get("runs", [])
+                                        title = runs[0].get("text") if runs else render["title"].get("simpleText", "Unknown Title")
+                                    artist = "Unknown Artist"
+                                    if "shortBylineText" in render:
+                                        runs = render["shortBylineText"].get("runs", [])
+                                        artist = runs[0].get("text") if runs else "Unknown Artist"
+                                    
+                                    parsed_title, p_artist = self.clean_title(title)
+                                    if p_artist == "Unknown Artist":
+                                        p_artist = artist.replace(" - Topic", "")
+
+                                    tracks_data.append({
+                                        "title": parsed_title,
+                                        "artist": p_artist,
+                                        "url": f"https://music.youtube.com/watch?v={v_id}"
+                                    })
+
+                            # playlistItemRenderer
+                            if "playlistItemRenderer" in obj:
+                                render = obj["playlistItemRenderer"]
+                                v_id = render.get("videoId")
+                                if v_id and v_id not in seen_ids:
+                                    seen_ids.add(v_id)
+                                    title = "Unknown Title"
+                                    if "title" in render:
+                                        runs = render["title"].get("runs", [])
+                                        title = runs[0].get("text") if runs else render["title"].get("simpleText", "Unknown Title")
+                                    artist = "Unknown Artist"
+                                    if "shortBylineText" in render:
+                                        runs = render["shortBylineText"].get("runs", [])
+                                        artist = runs[0].get("text") if runs else "Unknown Artist"
+
+                                    parsed_title, p_artist = self.clean_title(title)
+                                    if p_artist == "Unknown Artist":
+                                        p_artist = artist.replace(" - Topic", "")
+
+                                    tracks_data.append({
+                                        "title": parsed_title,
+                                        "artist": p_artist,
+                                        "url": f"https://music.youtube.com/watch?v={v_id}"
+                                    })
+                            
+                            for val in obj.values():
+                                if isinstance(val, dict):
+                                    recurse(val)
+                                elif isinstance(val, list):
+                                    for item in val:
+                                        if isinstance(item, dict):
+                                            recurse(item)
+
+                        recurse(data)
+
+                        # Loose scanning fallback
+                        if not tracks_data:
+                            def recurse_loose(obj):
+                                if not obj or not isinstance(obj, dict):
+                                    return
+                                if "videoId" in obj and "title" in obj:
+                                    v_id = obj["videoId"]
+                                    if v_id and len(v_id) == 11 and v_id not in seen_ids:
+                                        seen_ids.add(v_id)
+                                        title = "Unknown Title"
+                                        t_node = obj["title"]
+                                        if isinstance(t_node, str):
+                                            title = t_node
+                                        elif isinstance(t_node, dict):
+                                            runs = t_node.get("runs", [])
+                                            title = runs[0].get("text") if runs else "Unknown Title"
+                                        
+                                        artist = "Unknown Artist"
+                                        if "shortBylineText" in obj and isinstance(obj["shortBylineText"], dict):
+                                            runs = obj["shortBylineText"].get("runs", [])
+                                            artist = runs[0].get("text") if runs else "Unknown Artist"
+                                        elif "author" in obj:
+                                            artist = obj["author"]
+
+                                        parsed_title, p_artist = self.clean_title(title)
+                                        if p_artist == "Unknown Artist":
+                                            p_artist = artist.replace(" - Topic", "")
+
+                                        tracks_data.append({
+                                            "title": parsed_title,
+                                            "artist": p_artist,
+                                            "url": f"https://music.youtube.com/watch?v={v_id}"
+                                        })
+                                for val in obj.values():
+                                    if isinstance(val, dict):
+                                        recurse_loose(val)
+                                    elif isinstance(val, list):
+                                        for item in val:
+                                            if isinstance(item, dict):
+                                                recurse_loose(item)
+                            recurse_loose(data)
+                except Exception as json_err:
+                    print(f"Error recursive scanning ytInitialData: {json_err}")
+
+            # Fallback to Regex extraction ONLY if JSON solver couldn't capture tracks
+            if not tracks_data:
+                # Extract videoRenderer items embedded in ytInitialData inside script blocks
+                video_sections = re.findall(
+                    r'\{"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\].*?"shortBylineText":\{"runs":\[\{"text":"([^"]+)"\}', 
+                    html
+                )
                 
-            # If standard regex did not match, do simple regex extraction
+                for vid, title, channel in video_sections:
+                    if vid in seen_ids:
+                        continue
+                    seen_ids.add(vid)
+                    parsed_title, artist = self.clean_title(title)
+                    if artist == "Unknown Artist":
+                        artist = channel.replace(" - Topic", "")
+                    tracks_data.append({
+                        "title": parsed_title,
+                        "artist": artist,
+                        "url": f"https://music.youtube.com/watch?v={vid}"
+                    })
+                    
+            # If still nothing, do simple video ID discovery and oEmbed detail lookup
             if not tracks_data:
                 simple_vids = re.findall(r'"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"', html)
                 unique_vids = []
