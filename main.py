@@ -168,63 +168,43 @@ matcher = Matcher()
 
 # Header Section
 st.markdown(
-    f"""
-    <div style="text-align: center; margin-bottom: 1.5rem; margin-top: 1.5rem;">
-        <svg viewBox="0 0 500 500" width="180" height="180" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.45));">
-          <!-- Definitions for Gradients -->
-          <defs>
-            <linearGradient id="purpleBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#bf5af2" />
-              <stop offset="100%" stop-color="#0a84ff" />
-            </linearGradient>
-            <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="70%" stop-color="#18113c" stop-opacity="0.8" />
-              <stop offset="100%" stop-color="#090d16" stop-opacity="1" />
-            </radialGradient>
-          </defs>
-
-          <!-- Deep central backdrop ring -->
-          <circle cx="250" cy="250" r="210" fill="url(#ringGlow)" stroke="url(#purpleBlueGrad)" stroke-width="4" />
-          
-          <!-- Outer technological track rings -->
-          <circle cx="250" cy="250" r="195" stroke="#bf5af2" stroke-width="1.5" stroke-dasharray="25 15 5 15" stroke-opacity="0.6" fill="none" />
-          <circle cx="250" cy="250" r="185" stroke="#0a84ff" stroke-width="1" stroke-dasharray="5 10 30 10" stroke-opacity="0.4" fill="none" />
-
-          <!-- The infinity loop -->
-          <path d="M 250 250 C 210 170, 130 170, 130 250 C 130 330, 210 330, 250 250 C 290 170, 370 170, 370 250 C 370 330, 290 330, 250 250 Z" 
-                fill="none" stroke="url(#purpleBlueGrad)" stroke-width="20" stroke-linecap="round" />
-          <path d="M 250 250 C 210 180, 140 180, 140 250 C 140 320, 210 320, 250 250 C 290 180, 360 180, 360 250 C 360 320, 290 320, 250 250 Z" 
-                fill="none" stroke="#2a1b5c" stroke-width="8" stroke-linecap="round" />
-          <path d="M 250 250 C 210 190, 150 190, 150 250 C 150 310, 210 310, 250 250 C 290 190, 350 190, 350 250 C 350 310, 290 310, 250 250 Z" 
-                fill="none" stroke="url(#purpleBlueGrad)" stroke-width="3" stroke-linecap="round" />
-
-          <!-- Flowing Arrows -->
-          <path d="M 175 198 L 190 205 L 175 215" fill="none" stroke="#0a84ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M 325 302 L 310 295 L 325 285" fill="none" stroke="#bf5af2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-
-          <!-- Chat bubble -->
-          <path d="M 230 100 A 30 30 0 0 1 270 100 L 270 115 L 260 115 L 250 130 L 240 115 L 230 115 Z" fill="#bf5af2" opacity="0.9" />
-          <path d="M 242 105 L 252 105 L 252 113 M 244 110 L 258 110" stroke="#090d16" stroke-width="2.5" stroke-linecap="round" fill="none" />
-
-          <!-- Equalizer columns -->
-          <g transform="translate(210, 355)" fill="#0a84ff" opacity="0.95">
-            <rect x="0" y="20" width="8" height="20" rx="4" />
-            <rect x="15" y="5" width="8" height="35" rx="4" fill="url(#purpleBlueGrad)" />
-            <rect x="30" y="12" width="8" height="28" rx="4" fill="url(#purpleBlueGrad)" />
-            <rect x="45" y="2" width="8" height="38" rx="4" fill="url(#purpleBlueGrad)" />
-            <rect x="60" y="15" width="8" height="25" rx="4" />
-            <rect x="75" y="22" width="8" height="18" rx="4" />
-          </g>
-
-          <!-- Floating inside loop elements -->
-          <g transform="translate(160, 235)">
-            <circle cx="10" cy="22" r="6" fill="#0a84ff" />
-            <path d="M 16 22 L 16 5 L 28 8 L 28 15 L 16 12" fill="none" stroke="#0a84ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-          </g>
-          <polygon points="310,235 310,265 335,250" fill="#bf5af2" />
-        </svg>
-    </div>
-    """,
+    """<div style="text-align: center; margin-bottom: 1.5rem; margin-top: 1.5rem;">
+<svg viewBox="0 0 500 500" width="180" height="180" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.45));">
+<defs>
+<linearGradient id="purpleBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#bf5af2" />
+<stop offset="100%" stop-color="#0a84ff" />
+</linearGradient>
+<radialGradient id="ringGlow" cx="50%" cy="50%" r="50%">
+<stop offset="70%" stop-color="#18113c" stop-opacity="0.8" />
+<stop offset="100%" stop-color="#090d16" stop-opacity="1" />
+</radialGradient>
+</defs>
+<circle cx="250" cy="250" r="210" fill="url(#ringGlow)" stroke="url(#purpleBlueGrad)" stroke-width="4" />
+<circle cx="250" cy="250" r="195" stroke="#bf5af2" stroke-width="1.5" stroke-dasharray="25 15 5 15" stroke-opacity="0.6" fill="none" />
+<circle cx="250" cy="250" r="185" stroke="#0a84ff" stroke-width="1" stroke-dasharray="5 10 30 10" stroke-opacity="0.4" fill="none" />
+<path d="M 250 250 C 210 170, 130 170, 130 250 C 130 330, 210 330, 250 250 C 290 170, 370 170, 370 250 C 370 330, 290 330, 250 250 Z" fill="none" stroke="url(#purpleBlueGrad)" stroke-width="20" stroke-linecap="round" />
+<path d="M 250 250 C 210 180, 140 180, 140 250 C 140 320, 210 320, 250 250 C 290 180, 360 180, 360 250 C 360 320, 290 320, 250 250 Z" fill="none" stroke="#2a1b5c" stroke-width="8" stroke-linecap="round" />
+<path d="M 250 250 C 210 190, 150 190, 150 250 C 150 310, 210 310, 250 250 C 290 190, 350 190, 350 250 C 350 310, 290 310, 250 250 Z" fill="none" stroke="url(#purpleBlueGrad)" stroke-width="3" stroke-linecap="round" />
+<path d="M 175 198 L 190 205 L 175 215" fill="none" stroke="#0a84ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 325 302 L 310 295 L 325 285" fill="none" stroke="#bf5af2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M 230 100 A 30 30 0 0 1 270 100 L 270 115 L 260 115 L 250 130 L 240 115 L 230 115 Z" fill="#bf5af2" opacity="0.9" />
+<path d="M 242 105 L 252 105 L 252 113 M 244 110 L 258 110" stroke="#090d16" stroke-width="2.5" stroke-linecap="round" fill="none" />
+<g transform="translate(210, 355)" fill="#0a84ff" opacity="0.95">
+<rect x="0" y="20" width="8" height="20" rx="4" />
+<rect x="15" y="5" width="8" height="35" rx="4" fill="url(#purpleBlueGrad)" />
+<rect x="30" y="12" width="8" height="28" rx="4" fill="url(#purpleBlueGrad)" />
+<rect x="45" y="2" width="8" height="38" rx="4" fill="url(#purpleBlueGrad)" />
+<rect x="60" y="15" width="8" height="25" rx="4" />
+<rect x="75" y="22" width="8" height="18" rx="4" />
+</g>
+<g transform="translate(160, 235)">
+<circle cx="10" cy="22" r="6" fill="#0a84ff" />
+<path d="M 16 22 L 16 5 L 28 8 L 28 15 L 16 12" fill="none" stroke="#0a84ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+</g>
+<polygon points="310,235 310,265 335,250" fill="#bf5af2" />
+</svg>
+</div>""",
     unsafe_allow_html=True
 )
 

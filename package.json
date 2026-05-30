@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "dev": "python3 -m streamlit run main.py --server.port 3000 --server.address 0.0.0.0",
+    "build": "echo 'No build step needed for Streamlit'",
+    "start": "python3 -m streamlit run main.py --server.port 3000 --server.address 0.0.0.0",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "echo 'No lint step needed for Streamlit'"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
