@@ -167,7 +167,7 @@ deezer_service = DeezerService()
 matcher = Matcher()
 
 # Header Section
-st.write(
+st.markdown(
     f"""
     <div style="text-align: center; margin-bottom: 1.5rem; margin-top: 1.5rem;">
         <svg viewBox="0 0 500 500" width="180" height="180" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.45));">
