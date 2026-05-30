@@ -618,48 +618,126 @@ Return ONLY a JSON array matching this schema:
 // YouTube Search API using ADC/API Key
 async function searchYouTube(title: string, artist: string): Promise<any[]> {
   const creds = await getYouTubeCredentials();
-  if (!creds) return [];
+  if (creds) {
+    try {
+      const cleanTitle = title.replace(/[\(\[][Oo]fficial[\s\w]*[\)\]]/gi, "").trim();
+      let cleanArtist = artist.replace(/ - Topic$/i, "").trim();
+      const artistsList = cleanArtist.split(/[,&]|\bfeat\.?\b|\band\b/i).map(s => s.trim()).filter(Boolean);
+      const primaryArtist = artistsList[0] || "";
 
-  try {
-    const cleanTitle = title.replace(/[\(\[][Oo]fficial[\s\w]*[\)\]]/gi, "").trim();
-    let cleanArtist = artist.replace(/ - Topic$/i, "").trim();
-    const artistsList = cleanArtist.split(/[,&]|\bfeat\.?\b|\band\b/i).map(s => s.trim()).filter(Boolean);
-    const primaryArtist = artistsList[0] || "";
+      const query = primaryArtist ? `${primaryArtist} ${cleanTitle}` : `${cleanArtist} ${cleanTitle}`;
+      let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5`;
+      const headers: Record<string, string> = { "Accept": "application/json" };
 
-    const query = primaryArtist ? `${primaryArtist} ${cleanTitle}` : `${cleanArtist} ${cleanTitle}`;
-    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5`;
-    const headers: Record<string, string> = { "Accept": "application/json" };
+      if (creds.apiKey) {
+        url += `&key=${creds.apiKey}`;
+      } else if (creds.headers) {
+        Object.assign(headers, creds.headers);
+      }
 
-    if (creds.apiKey) {
-      url += `&key=${creds.apiKey}`;
-    } else if (creds.headers) {
-      Object.assign(headers, creds.headers);
+      const response = await fetch(url, { headers });
+      if (response.ok) {
+        const data: any = await response.json();
+        const items = data.items || [];
+
+        return items.map((item: any) => {
+          const vTitle = item.snippet.title;
+          // Crude parsing of Artist - Song
+          let songTitle = vTitle;
+          let songArtist = item.snippet.channelTitle.replace(" - Topic", "");
+          if (vTitle.includes("-")) {
+            const parts = vTitle.split("-");
+            songArtist = parts[0].trim();
+            songTitle = parts[1].trim();
+          }
+          return {
+            title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+            artist: songArtist,
+            url: `https://music.youtube.com/watch?v=${item.id.videoId}`
+          };
+        });
+      } else {
+        console.warn(`YouTube v3 search API returned status ${response.status}. Trying public search fallback...`);
+      }
+    } catch (apiErr: any) {
+      console.warn("YouTube search API failed, trying public search fallback...", apiErr.message || apiErr);
     }
+  }
 
-    const response = await fetch(url, { headers });
+  // Fallback to public search scraping
+  return searchYouTubePublic(title, artist);
+}
+
+// Public scraping fallback for YouTube search tracks
+async function searchYouTubePublic(title: string, artist: string): Promise<any[]> {
+  try {
+    const query = `${artist} ${title}`;
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
+
     if (!response.ok) return [];
 
-    const data: any = await response.json();
-    const items = data.items || [];
+    const html = await response.text();
+    const candidates: any[] = [];
+    const seenIds = new Set<string>();
 
-    return items.map((item: any) => {
-      const vTitle = item.snippet.title;
-      // Crude parsing of Artist - Song
-      let songTitle = vTitle;
-      let songArtist = item.snippet.channelTitle.replace(" - Topic", "");
-      if (vTitle.includes("-")) {
-        const parts = vTitle.split("-");
+    const regex = /"videoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\].*?"ownerText":\{"runs":\[\{"text":"([^"]+)"\}/g;
+    let match;
+    while ((match = regex.exec(html)) !== null && candidates.length < 5) {
+      const videoId = match[1];
+      const videoTitle = match[2];
+      const videoChannel = match[3];
+
+      if (seenIds.has(videoId)) continue;
+      seenIds.add(videoId);
+
+      let songTitle = videoTitle;
+      let songArtist = videoChannel.replace(" - Topic", "");
+      if (videoTitle.includes("-")) {
+        const parts = videoTitle.split("-");
         songArtist = parts[0].trim();
         songTitle = parts[1].trim();
       }
-      return {
+
+      candidates.push({
         title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
         artist: songArtist,
-        url: `https://music.youtube.com/watch?v=${item.id.videoId}`
-      };
-    });
-  } catch (error) {
-    console.error("YouTube Search service failed:", error);
+        url: `https://music.youtube.com/watch?v=${videoId}`
+      });
+    }
+
+    if (candidates.length === 0) {
+      const vidRegex = /\/watch\?v=([a-zA-Z0-9_-]{11})/g;
+      const uniqueIds: string[] = [];
+      let vidMatch;
+      while ((vidMatch = vidRegex.exec(html)) !== null && uniqueIds.length < 3) {
+        const vid = vidMatch[1];
+        if (!seenIds.has(vid)) {
+          seenIds.add(vid);
+          uniqueIds.push(vid);
+        }
+      }
+
+      for (const vid of uniqueIds) {
+        try {
+          const detail = await getYouTubeTrackMetadata(vid);
+          if (detail) {
+            candidates.push(detail);
+          }
+        } catch {
+          // ignore individual video lookup failures
+        }
+      }
+    }
+
+    return candidates;
+  } catch (err: any) {
+    console.error("YouTube public search failed:", err.message || err);
     return [];
   }
 }
@@ -721,55 +799,138 @@ async function getYouTubeTrackMetadata(videoId: string): Promise<any> {
 
 async function getYouTubePlaylistMetadata(playlistId: string): Promise<any[]> {
   const creds = await getYouTubeCredentials();
-  if (!creds) throw new Error("YouTube credentials (ADC or API keys) are not configured.");
+  if (creds) {
+    try {
+      const tracks: any[] = [];
+      let pageToken = "";
+      let keepFetching = true;
 
-  const tracks: any[] = [];
-  let pageToken = "";
-  let keepFetching = true;
+      while (keepFetching && tracks.length < 100) {
+        let url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50&pageToken=${pageToken}`;
+        const headers: Record<string, string> = { "Accept": "application/json" };
 
-  while (keepFetching && tracks.length < 100) {
-    let url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50&pageToken=${pageToken}`;
-    const headers: Record<string, string> = { "Accept": "application/json" };
-
-    if (creds.apiKey) {
-      url += `&key=${creds.apiKey}`;
-    } else if (creds.headers) {
-      Object.assign(headers, creds.headers);
-    }
-
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      if (response.status === 403) {
-        throw new Error("YouTube API or ADC returned a 403 (Forbidden) response. This usually means the 'YouTube Data API v3' service has not been activated/enabled for your Google Cloud Project or the current credentials. Please visit the Google Cloud Console, select your active project, search for 'YouTube Data API v3', and click 'Enable'.");
-      }
-      throw new Error(`YouTube playlist lookup failed with status: ${response.status}`);
-    }
-
-    const data: any = await response.json();
-    const items = data.items || [];
-    for (const item of items) {
-      const vTitle = item.snippet.title;
-      const vId = item.snippet.resourceId?.videoId;
-      if (vId) {
-        let songTitle = vTitle;
-        let songArtist = item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle || "Unknown Artist";
-        songArtist = songArtist.replace(" - Topic", "");
-        if (vTitle.includes("-")) {
-          const parts = vTitle.split("-");
-          songArtist = parts[0].trim();
-          songTitle = parts[1].trim();
+        if (creds.apiKey) {
+          url += `&key=${creds.apiKey}`;
+        } else if (creds.headers) {
+          Object.assign(headers, creds.headers);
         }
-        tracks.push({
-          title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
-          artist: songArtist,
-          url: `https://music.youtube.com/watch?v=${vId}`
-        });
+
+        const response = await fetch(url, { headers });
+        if (!response.ok) {
+          throw new Error(`YouTube playlist lookup failed with status: ${response.status}`);
+        }
+
+        const data: any = await response.json();
+        const items = data.items || [];
+        for (const item of items) {
+          const vTitle = item.snippet.title;
+          const vId = item.snippet.resourceId?.videoId;
+          if (vId) {
+            let songTitle = vTitle;
+            let songArtist = item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle || "Unknown Artist";
+            songArtist = songArtist.replace(" - Topic", "");
+            if (vTitle.includes("-")) {
+              const parts = vTitle.split("-");
+              songArtist = parts[0].trim();
+              songTitle = parts[1].trim();
+            }
+            tracks.push({
+              title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+              artist: songArtist,
+              url: `https://music.youtube.com/watch?v=${vId}`
+            });
+          }
+        }
+        pageToken = data.nextPageToken;
+        keepFetching = !!pageToken;
+      }
+      return tracks;
+    } catch (apiErr: any) {
+      console.warn("YouTube API playlist retrieval failed, trying public scraping fallback...", apiErr.message || apiErr);
+    }
+  }
+
+  // Fallback to public YouTube playlist scraping
+  return getYouTubePlaylistMetadataPublic(playlistId);
+}
+
+// Public scraping fallback for YouTube playlist tracks
+async function getYouTubePlaylistMetadataPublic(playlistId: string): Promise<any[]> {
+  try {
+    const url = `https://www.youtube.com/playlist?list=${playlistId}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Public scraping failed with status: ${response.status}`);
+    }
+
+    const html = await response.text();
+    const tracks: any[] = [];
+    const seenIds = new Set<string>();
+
+    const regex = /\{"playlistVideoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\].*?"shortBylineText":\{"runs":\[\{"text":"([^"]+)"\}/g;
+    let match;
+    while ((match = regex.exec(html)) !== null && tracks.length < 100) {
+      const videoId = match[1];
+      const origTitle = match[2];
+      const origChannel = match[3];
+
+      if (seenIds.has(videoId)) continue;
+      seenIds.add(videoId);
+
+      let songTitle = origTitle;
+      let songArtist = origChannel.replace(" - Topic", "");
+      if (origTitle.includes("-")) {
+        const parts = origTitle.split("-");
+        songArtist = parts[0].trim();
+        songTitle = parts[1].trim();
+      }
+
+      tracks.push({
+        title: songTitle.replace(/[\(\[][Oo]fficial[\)\]]/gi, '').trim(),
+        artist: songArtist,
+        url: `https://music.youtube.com/watch?v=${videoId}`
+      });
+    }
+
+    if (tracks.length === 0) {
+      const simpleRegex = /"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g;
+      const uniqueVids: string[] = [];
+      let simpleMatch;
+      while ((simpleMatch = simpleRegex.exec(html)) !== null && uniqueVids.length < 30) {
+        const vid = simpleMatch[1];
+        if (!seenIds.has(vid)) {
+          seenIds.add(vid);
+          uniqueVids.push(vid);
+        }
+      }
+
+      for (const vid of uniqueVids) {
+        try {
+          const details = await getYouTubeTrackMetadata(vid);
+          if (details) {
+            tracks.push(details);
+          }
+        } catch {
+          // ignore individual track details failures
+        }
       }
     }
-    pageToken = data.nextPageToken;
-    keepFetching = !!pageToken;
+
+    if (tracks.length === 0) {
+      throw new Error("Could not find any playlist track list via public scraping.");
+    }
+
+    return tracks;
+  } catch (err: any) {
+    console.error("Public playlist scraping failed:", err.message || err);
+    throw new Error(`Failed to fetch YouTube playlist tracks: ${err.message || err}`);
   }
-  return tracks;
 }
 
 // Deezer Endpoint Integrations (Free API!)
