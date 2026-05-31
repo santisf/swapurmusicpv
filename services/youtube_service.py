@@ -246,25 +246,13 @@ class YouTubeService:
                     if eq_idx != -1:
                         json_start = html.find("{", eq_idx)
                         if json_start != -1:
-                            end_idx = html.find(";</script>", json_start)
-                            if end_idx == -1:
-                                end_idx = html.find("</script>", json_start)
-                            if end_idx == -1:
-                                end_idx = html.find("};", json_start)
-                            
-                            debug_info.append(f"json_start: {json_start}, end_idx: {end_idx}")
-                            if end_idx != -1:
-                                raw_json = html[json_start:end_idx + 1].strip()
-                                debug_info.append(f"raw_json block extracted, length: {len(raw_json)}")
-                                if raw_json.endswith(";"):
-                                    raw_json = raw_json[:-1]
-                                
-                                try:
-                                    data = json.loads(raw_json)
-                                    debug_info.append("JSON deserialization success")
+                            try:
+                                    decoder = json.JSONDecoder()
+                                    data, end_pos = decoder.raw_decode(html[json_start:])
+                                    debug_info.append(f"JSON raw_decode success (char count: {end_pos})")
 
-                                    # Comprehensive General Recursive Crawler
-                                    # Completely immune to list nesting depths or dynamic parent/child formats
+                                # Comprehensive General Recursive Crawler
+                                # Completely immune to list nesting depths or dynamic parent/child formats
                                     def crawl(obj):
                                         if not obj:
                                             return
@@ -442,8 +430,8 @@ class YouTubeService:
 
                                         crawl_loose(data)
                                         debug_info.append(f"tracks matched after loose crawl: {len(tracks_data)}")
-                                except Exception as json_err:
-                                    debug_info.append(f"JSON indexing failed on attempt: {json_err}")
+                            except Exception as json_err:
+                                debug_info.append(f"JSON indexing failed on attempt: {json_err}")
 
                 # Fallback to direct RegEx capture on the general raw scrape markup if JSON is missing or incomplete
                 if not tracks_data:
