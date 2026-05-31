@@ -8,7 +8,7 @@
     "build": "echo 'No build step needed for Streamlit'",
     "start": "python3 -m streamlit run main.py --server.port 3000 --server.address 0.0.0.0",
     "clean": "rm -rf dist",
-    "lint": "python3 test_scrape.py"
+    "lint": "python3 -m py_compile services/youtube_service.py"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

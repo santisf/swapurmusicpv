@@ -10,16 +10,19 @@ class YouTubeService:
         self.api_key = os.getenv("YOUTUBE_API_KEY")
         self.yt = None
         
-        # Try ADC (Application Default Credentials) first
-        try:
-            self.yt = build("youtube", "v3")
-        except Exception as adc_err:
-            print(f"YouTube client with ADC failed or unavailable: {adc_err}. Falling back to developerKey...")
-            if self.api_key:
-                try:
-                    self.yt = build("youtube", "v3", developerKey=self.api_key)
-                except Exception as e:
-                    print(f"YouTube client initialization with key failed: {e}")
+        if self.api_key:
+            try:
+                self.yt = build("youtube", "v3", developerKey=self.api_key)
+                print("YouTube client initialized with developerKey.")
+            except Exception as e:
+                print(f"YouTube client initialization with key failed: {e}")
+        else:
+            # Try ADC (Application Default Credentials) only if no API key is specified
+            try:
+                self.yt = build("youtube", "v3")
+                print("YouTube client initialized with ADC.")
+            except Exception as adc_err:
+                print(f"YouTube client with ADC failed or unavailable: {adc_err}")
 
     def is_configured(self):
         # We return True because we support both Authenticated APIs and elegant Public Scraper Fallbacks!
@@ -156,6 +159,61 @@ class YouTubeService:
         tracks_data = []
         seen_ids = set()
         fetched_htmls = []
+
+        # 1. Try public XML/RSS feed first (extremely reliable, lightweight, and bypasses JS-rendering / scrapers block)
+        try:
+            import urllib.request
+            import xml.etree.ElementTree as ET
+            debug_info.append(f"Attempting RSS/XML feed fetch for playlist: {playlist_id}")
+            rss_url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
+            
+            # Fetch XML data using urllib
+            req = urllib.request.Request(rss_url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+            })
+            with urllib.request.urlopen(req, timeout=10) as response:
+                xml_data = response.read()
+                
+            debug_info.append(f"RSS/XML fetch succeeded (len: {len(xml_data)})")
+            
+            # Parse XML
+            root = ET.fromstring(xml_data)
+            
+            # Namespaces used in YouTube Atom feeds
+            ns = {
+                'atom': 'http://www.w3.org/2005/Atom',
+                'yt': 'http://www.youtube.com/xml/schemas/2015'
+            }
+            
+            xml_tracks = []
+            for entry in root.findall('atom:entry', ns) or root.findall('.//{http://www.w3.org/2005/Atom}entry'):
+                title_elem = entry.find('atom:title', ns) or entry.find('.//{http://www.w3.org/2005/Atom}title')
+                video_id_elem = entry.find('yt:videoId', ns) or entry.find('.//{http://www.youtube.com/xml/schemas/2015}videoId')
+                author_elem = entry.find('atom:author/atom:name', ns) or entry.find('.//{http://www.w3.org/2005/Atom}author/{http://www.w3.org/2005/Atom}name')
+                
+                title = title_elem.text if title_elem is not None else ""
+                video_id = video_id_elem.text if video_id_elem is not None else ""
+                author = author_elem.text if author_elem is not None else ""
+                
+                if video_id and title:
+                    parsed_title, artist = self.clean_title(title)
+                    if artist == "Unknown Artist" and author:
+                        artist = author.replace(" - Topic", "")
+                    
+                    xml_tracks.append({
+                        "title": parsed_title,
+                        "artist": artist,
+                        "url": f"https://music.youtube.com/watch?v={video_id}"
+                    })
+                    seen_ids.add(video_id)
+            
+            if xml_tracks:
+                debug_info.append(f"Successfully retrieved {len(xml_tracks)} tracks from RSS feed!")
+                return xml_tracks
+                
+        except Exception as rss_err:
+            debug_info.append(f"RSS/XML feed fetch failed: {rss_err}")
 
         # Try both youtube.com and music.youtube.com domains for broader scraper resilience
         urls_to_try = [
