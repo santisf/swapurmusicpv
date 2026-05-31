@@ -30,15 +30,44 @@ st.markdown("""
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
+    /* Logo hover animation */
+    .logo-svg {
+        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.4s ease;
+        transform-origin: center;
+        display: block;
+        margin: 0 auto;
+    }
+    .logo-svg:hover {
+        transform: scale(1.08) rotate(3deg);
+        filter: drop-shadow(0 0 35px rgba(168, 85, 247, 0.85)) brightness(1.15) !important;
+    }
+
+    @keyframes shine-sweep {
+        0% {
+            background-position: -200% center;
+        }
+        100% {
+            background-position: 200% center;
+        }
+    }
+
     /* Elegant Title and Header styling */
     .main-title {
         font-size: 3rem;
         font-weight: 800;
-        background: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%);
+        background: linear-gradient(120deg, #a855f7 0%, #3b82f6 30%, #ffffff 50%, #3b82f6 70%, #a855f7 100%);
+        background-size: 200% auto;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
         margin-bottom: 0.5rem;
+        transition: filter 0.4s ease, transform 0.3s ease;
+        cursor: default;
+    }
+    .main-title:hover {
+        animation: shine-sweep 1.8s infinite linear;
+        filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.75)) brightness(1.3);
+        transform: translateY(-1px) scale(1.03);
     }
     .main-subtitle {
         font-size: 1.15rem;
@@ -169,7 +198,7 @@ matcher = Matcher()
 # Header Section
 st.markdown(
     """<div style="text-align: center; margin-bottom: 1.5rem; margin-top: 1.5rem;">
-<svg viewBox="0 0 500 500" width="180" height="180" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.45));">
+<svg class="logo-svg" viewBox="0 0 500 500" width="180" height="180" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.45));">
 <defs>
 <linearGradient id="purpleBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
 <stop offset="0%" stop-color="#bf5af2" />
@@ -279,7 +308,17 @@ if convert_btn:
                         elif detected_platform == "Deezer":
                             tracks_to_match = deezer_service.get_playlist_tracks(source_id)
                 except Exception as ex:
+                    import traceback
                     st.error(f"Error cargando metadatos originales: {ex}")
+                    st.text(traceback.format_exc())
+                    if os.path.exists("/debug_py.txt"):
+                        st.subheader("Depuración interna / Diagnostic Log:")
+                        with open("/debug_py.txt") as df:
+                            st.code(df.read())
+                    elif os.path.exists("./debug_py.txt"):
+                        st.subheader("Depuración interna / Diagnostic Log:")
+                        with open("./debug_py.txt") as df:
+                            st.code(df.read())
                     tracks_to_match = []
 
             if tracks_to_match:

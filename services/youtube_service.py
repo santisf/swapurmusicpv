@@ -155,6 +155,7 @@ class YouTubeService:
         debug_info = []
         tracks_data = []
         seen_ids = set()
+        fetched_htmls = []
 
         # Try both youtube.com and music.youtube.com domains for broader scraper resilience
         urls_to_try = [
@@ -230,6 +231,7 @@ class YouTubeService:
                 if not html:
                     debug_info.append(f"Skipping url {url} due to empty fetch body")
                     continue
+                fetched_htmls.append(html)
 
                 debug_info.append(f"Parsing body of size: {len(html)} characters")
 
@@ -309,6 +311,76 @@ class YouTubeService:
                                                     artist = "Unknown Artist"
                                                     if "shortBylineText" in render:
                                                         runs = render["shortBylineText"].get("runs", [])
+                                                        artist = runs[0].get("text") if runs else "Unknown Artist"
+
+                                                    parsed_title, p_artist = self.clean_title(title)
+                                                    if p_artist == "Unknown Artist":
+                                                        p_artist = artist.replace(" - Topic", "")
+
+                                                    tracks_data.append({
+                                                        "title": parsed_title,
+                                                        "artist": p_artist,
+                                                        "url": f"https://music.youtube.com/watch?v={v_id}"
+                                                    })
+
+                                            # Case C: musicResponsiveListItemRenderer (for YouTube Music Playlists/Albums)
+                                            if "musicResponsiveListItemRenderer" in obj:
+                                                render = obj["musicResponsiveListItemRenderer"]
+                                                v_id = None
+                                                if "playlistItemData" in render:
+                                                    v_id = render["playlistItemData"].get("videoId")
+                                                if not v_id and "playNavigationEndpoint" in render:
+                                                    nav = render["playNavigationEndpoint"]
+                                                    if "watchEndpoint" in nav:
+                                                        v_id = nav["watchEndpoint"].get("videoId")
+                                                if v_id and v_id not in seen_ids:
+                                                    seen_ids.add(v_id)
+                                                    title = "Unknown Title"
+                                                    artist = "Unknown Artist"
+                                                    flex_cols = render.get("flexColumns", [])
+                                                    if len(flex_cols) > 0:
+                                                        try:
+                                                            col0 = flex_cols[0].get("musicResponsiveListItemFlexColumnRenderer", {})
+                                                            runs = col0.get("text", {}).get("runs", [])
+                                                            if runs:
+                                                                title = runs[0].get("text", "Unknown Title")
+                                                        except Exception:
+                                                            pass
+                                                    if len(flex_cols) > 1:
+                                                        try:
+                                                            col1 = flex_cols[1].get("musicResponsiveListItemFlexColumnRenderer", {})
+                                                            runs = col1.get("text", {}).get("runs", [])
+                                                            if runs:
+                                                                artist = runs[0].get("text", "Unknown Artist")
+                                                        except Exception:
+                                                            pass
+                                                    
+                                                    parsed_title, p_artist = self.clean_title(title)
+                                                    if p_artist == "Unknown Artist":
+                                                        p_artist = artist.replace(" - Topic", "")
+
+                                                    tracks_data.append({
+                                                        "title": parsed_title,
+                                                        "artist": p_artist,
+                                                        "url": f"https://music.youtube.com/watch?v={v_id}"
+                                                    })
+
+                                            # Case D: playlistPanelVideoRenderer (for alternate list views)
+                                            if "playlistPanelVideoRenderer" in obj:
+                                                render = obj["playlistPanelVideoRenderer"]
+                                                v_id = render.get("videoId")
+                                                if v_id and v_id not in seen_ids:
+                                                    seen_ids.add(v_id)
+                                                    title = "Unknown Title"
+                                                    if "title" in render:
+                                                        runs = render["title"].get("runs", [])
+                                                        title = runs[0].get("text") if runs else render["title"].get("simpleText", "Unknown Title")
+                                                    artist = "Unknown Artist"
+                                                    if "shortBylineText" in render:
+                                                        runs = render["shortBylineText"].get("runs", [])
+                                                        artist = runs[0].get("text") if runs else "Unknown Artist"
+                                                    elif "longBylineText" in render:
+                                                        runs = render["longBylineText"].get("runs", [])
                                                         artist = runs[0].get("text") if runs else "Unknown Artist"
 
                                                     parsed_title, p_artist = self.clean_title(title)
@@ -406,7 +478,7 @@ class YouTubeService:
         if not tracks_data:
             try:
                 debug_info.append("Entering simple oEmbed lookup fallback chain")
-                all_html = "".join([res.text for url in urls_to_try if ('res' in locals() and res and hasattr(res, "text") and res.text)])
+                all_html = " ".join(fetched_htmls)
                 simple_vids = re.findall(r'"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"', all_html)
                 unique_vids = []
                 for v in simple_vids:
@@ -425,6 +497,11 @@ class YouTubeService:
                 debug_info.append(f"OEmbed extraction error: {fallback_err}")
                     
         # Safely dump execution analysis
+        try:
+            with open("debug_py.txt", "w") as df:
+                df.write("\n".join(debug_info))
+        except Exception as e:
+            print(f"Error writing local debug_py.txt: {e}")
         try:
             with open("/debug_py.txt", "w") as df:
                 df.write("\n".join(debug_info))
