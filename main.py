@@ -347,31 +347,28 @@ if convert_btn:
                         qual_col = "🔵 Búsqueda Directa Fallback / Search Query Link"
 
                     # Beautiful single card display
-                    st.markdown(f"""
-                    <div class='track-result-card'>
-                        <div style='font-size: 3rem; margin-bottom: 0.5rem;'>🎵</div>
-                        <div class='track-title'>{title}</div>
-                        <div class='track-artist'>{artist}</div>
-                        <div style='margin-bottom: 2rem;'>
-                            <span class='badge-platforms'>{qual_col} (Confianza: {int(avg_score * 100)}%)</span>
-                        </div>
-                        
-                        <div class='platform-link-container'>
-                            <a href='{sp_link}' target='_blank' class='platform-btn btn-spotify'>
-                                <span class='btn-text'>🟢 Escuchar en Spotify</span>
-                                <span class='badge-platforms'>ABRIR / OPEN</span>
-                            </a>
-                            <a href='{yt_link}' target='_blank' class='platform-btn btn-youtube'>
-                                <span class='btn-text'>🔴 Escuchar en YouTube Music</span>
-                                <span class='badge-platforms'>ABRIR / OPEN</span>
-                            </a>
-                            <a href='{dz_link}' target='_blank' class='platform-btn btn-deezer btn-deezer-actual'>
-                                <span class='btn-text'>🎵 Escuchar en Deezer</span>
-                                <span class='badge-platforms'>ABRIR / OPEN</span>
-                            </a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"""<div class='track-result-card'>
+<div style='font-size: 3rem; margin-bottom: 0.5rem;'>🎵</div>
+<div class='track-title'>{title}</div>
+<div class='track-artist'>{artist}</div>
+<div style='margin-bottom: 2rem;'>
+    <span class='badge-platforms'>{qual_col} (Confianza: {int(avg_score * 100)}%)</span>
+</div>
+<div class='platform-link-container'>
+    <a href='{sp_link}' target='_blank' class='platform-btn btn-spotify'>
+        <span class='btn-text'>🟢 Escuchar en Spotify</span>
+        <span class='badge-platforms'>ABRIR / OPEN</span>
+    </a>
+    <a href='{yt_link}' target='_blank' class='platform-btn btn-youtube'>
+        <span class='btn-text'>🔴 Escuchar en YouTube Music</span>
+        <span class='badge-platforms'>ABRIR / OPEN</span>
+    </a>
+    <a href='{dz_link}' target='_blank' class='platform-btn btn-deezer btn-deezer-actual'>
+        <span class='btn-text'>🎵 Escuchar en Deezer</span>
+        <span class='badge-platforms'>ABRIR / OPEN</span>
+    </a>
+</div>
+</div>""", unsafe_allow_html=True)
                     
                 # ====== RENDER PLAYLIST VISUALIZER ======
                 else: 

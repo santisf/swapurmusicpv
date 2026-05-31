@@ -169,9 +169,24 @@ class YouTubeService:
             "Cookie": "CONSENT=YES+cb.20210328-17-p0.en-GB+FX+999; SOCS=eSG_AgIE"
         }
 
-        # Subprocess curl-based and requests-based fetch strategy
+        # Subprocess curl-based, requests-based, and urllib-based fetch strategy
         def try_fetch_html(url):
-            # 1) Try standard requests first
+            # 1) Try standard urllib first (extremely reliable on Cloud Run and bypasses proxy block)
+            try:
+                import urllib.request
+                debug_info.append(f"Attempting urllib fetch on: {url}")
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    html = response.read().decode('utf-8', errors='ignore')
+                if html and len(html) > 30000:
+                    debug_info.append(f"Urllib fetch succeeded (len: {len(html)})")
+                    return html
+                else:
+                    debug_info.append(f"Urllib returned short response (len: {len(html) if html else 0})")
+            except Exception as e:
+                debug_info.append(f"Urllib fetch failed: {e}")
+
+            # 2) Try standard requests as fallback
             try:
                 debug_info.append(f"Attempting requests fetch on: {url}")
                 res = requests.get(url, headers=headers, timeout=10)
@@ -183,7 +198,7 @@ class YouTubeService:
             except Exception as e:
                 debug_info.append(f"Requests fetch failed: {e}")
 
-            # 2) Fallback to subprocess curl call (bypasses most bot shields, highly reliable on Cloud Run)
+            # 3) Fallback to subprocess curl call (bypasses most bot shields, highly reliable on Cloud Run)
             try:
                 debug_info.append("Initiating curl subprocess fallback fetch...")
                 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
