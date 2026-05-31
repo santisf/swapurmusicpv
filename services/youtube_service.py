@@ -151,6 +151,7 @@ class YouTubeService:
 
     def public_get_playlist_tracks(self, playlist_id):
         import traceback
+        import subprocess
         debug_info = []
         tracks_data = []
         seen_ids = set()
@@ -168,17 +169,54 @@ class YouTubeService:
             "Cookie": "CONSENT=YES+cb.20210328-17-p0.en-GB+FX+999; SOCS=eSG_AgIE"
         }
 
+        # Subprocess curl-based and requests-based fetch strategy
+        def try_fetch_html(url):
+            # 1) Try standard requests first
+            try:
+                debug_info.append(f"Attempting requests fetch on: {url}")
+                res = requests.get(url, headers=headers, timeout=10)
+                if res.ok and len(res.text) > 30000:
+                    debug_info.append(f"Requests fetch succeeded with status {res.status_code}")
+                    return res.text
+                else:
+                    debug_info.append(f"Requests fetch returned non-ideal response (status: {res.status_code}, len: {len(res.text) if res.text else 0})")
+            except Exception as e:
+                debug_info.append(f"Requests fetch failed: {e}")
+
+            # 2) Fallback to subprocess curl call (bypasses most bot shields, highly reliable on Cloud Run)
+            try:
+                debug_info.append("Initiating curl subprocess fallback fetch...")
+                user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+                accept_lang = "en-US,en;q=0.9"
+                cookie = "CONSENT=YES+cb.20210328-17-p0.en-GB+FX+999; SOCS=eSG_AgIE"
+                
+                command = [
+                    "curl", "-sL", "--max-time", "15",
+                    "-H", f"User-Agent: {user_agent}",
+                    "-H", f"Accept-Language: {accept_lang}",
+                    "-b", cookie,
+                    url
+                ]
+                html_bytes = subprocess.check_output(command, stderr=subprocess.DEVNULL, timeout=15)
+                html = html_bytes.decode('utf-8', errors='ignore')
+                if html and len(html) > 30000:
+                    debug_info.append(f"Curl subprocess fallback succeeded (len: {len(html)})")
+                    return html
+                else:
+                    debug_info.append("Curl fallback returned empty or short payload")
+            except Exception as e:
+                debug_info.append(f"Curl subprocess fallback failed: {e}")
+
+            return ""
+
         for attempt_idx, url in enumerate(urls_to_try):
             try:
-                debug_info.append(f"Attempting fetch on: {url}")
-                res = requests.get(url, headers=headers, timeout=10)
-                debug_info.append(f"HTTP Status for attempt {attempt_idx}: {res.status_code}")
-                if not res.ok:
-                    debug_info.append(f"HTTP error status {res.status_code}")
+                html = try_fetch_html(url)
+                if not html:
+                    debug_info.append(f"Skipping url {url} due to empty fetch body")
                     continue
 
-                html = res.text
-                debug_info.append(f"HTML fetch successful. Page Size: {len(html)} characters")
+                debug_info.append(f"Parsing body of size: {len(html)} characters")
 
                 # Parse the initial data block dynamically with absolute resilience to spacing
                 start_keyword = "ytInitialData"
