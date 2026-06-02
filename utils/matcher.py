@@ -48,8 +48,16 @@ class Matcher:
     def clean_text(self, text):
         if not text:
             return ""
-        # Remove common suffixes like (Remaster), [Official Audio], Video
-        text = re.sub(r'[\(\[][Vv]ideo|[Aa]udio|[Oo]fficial|[Mm]usic|[Vv]ideo\s*[Cc]lip|[Hh]D|[Hh]igh\s*[Dd]efinition|[Rr]emastered|[Rr]emaster|[Ll]ive|[Aa]coustic|[Vv]ersion[\)\]]', '', text)
+        # Remove any parentheses/brackets that contain common video/audio metadata tags
+        text = re.sub(
+            r'[\(\[][^\)\]]*(?:video|audio|official|music|clip|hd|definition|remastered|remaster|lyrics?|version|live|acoustic)[^\)\]]*[\)\]]', 
+            '', 
+            text, 
+            flags=re.IGNORECASE
+        )
+        # Remove any empty or trailing parentheses/brackets
+        text = re.sub(r'\(\s*\)|\[\s*\]', '', text)
+        # Clean up multiple whitespaces
         text = re.sub(r'\s+', ' ', text)
         return text.strip().lower()
 

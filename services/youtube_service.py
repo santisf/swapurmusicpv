@@ -63,13 +63,14 @@ class YouTubeService:
     def clean_title(self, title):
         if not title:
             return "", ""
-        clean_name = re.sub(r'[\(\[][Oo]fficial\s*[Mm]usic\s*[Vv]ideo[\)\]]', '', title)
-        clean_name = re.sub(r'[\(\[][Oo]fficial\s*[Vv]ideo[\)\]]', '', clean_name)
-        clean_name = re.sub(r'[\(\[][Mm]usic\s*[Vv]ideo[\)\]]', '', clean_name)
-        clean_name = re.sub(r'[\(\[][Vv]ideo\s*[Cc]lip[\)\]]', '', clean_name)
-        clean_name = re.sub(r'[\(\[][Aa]udio[\)\]]', '', clean_name)
-        clean_name = re.sub(r'[\(\[][Ll]yrics[\)\]]', '', clean_name)
-        clean_name = re.sub(r'[\(\[][Rr][Ee][Mm][Aa][Ss][Tt][Ee][Rr][Ee][Dd][\)\]]', '', clean_name)
+        # Strip common metadata/video tags found in brackets or parentheses
+        clean_name = re.sub(
+            r'[\(\[][^\)\]]*(?:video|audio|official|music|clip|hd|definition|remastered|remaster|lyrics?|version|live|acoustic)[^\)\]]*[\)\]]', 
+            '', 
+            title, 
+            flags=re.IGNORECASE
+        )
+        clean_name = re.sub(r'\(\s*\)|\[\s*\]', '', clean_name)
         clean_name = re.sub(r'\s+', ' ', clean_name).strip()
         
         if " - " in clean_name:
