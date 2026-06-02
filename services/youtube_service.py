@@ -25,12 +25,7 @@ class YouTubeService:
             except Exception as e:
                 print(f"YouTube client initialization with key failed: {e}")
         else:
-            # Try ADC (Application Default Credentials) only if no API key is specified
-            try:
-                self.yt = build("youtube", "v3")
-                print("YouTube client initialized with ADC.")
-            except Exception as adc_err:
-                print(f"YouTube client with ADC failed or unavailable: {adc_err}")
+            print("YouTube client initialized in public scraper mode (no key).")
 
     def is_configured(self):
         # We return True because we support both Authenticated APIs and elegant Public Scraper Fallbacks!

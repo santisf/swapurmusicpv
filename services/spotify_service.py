@@ -176,9 +176,92 @@ class SpotifyService:
             print(f"Spotify API track match failed, falling back to public lookup: {e}")
             return self.public_get_track_details(track_id)
 
+    def public_get_playlist_tracks(self, playlist_id):
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9"
+            }
+            # Approach A: Fetch Spotify embed layout which contains preloaded JSON state!
+            embed_url = f"https://open.spotify.com/embed/playlist/{playlist_id}"
+            embed_res = requests.get(embed_url, headers=headers, timeout=10)
+            if embed_res.ok:
+                embed_html = embed_res.text
+                script_match = re.search(r'<script\s+id=["\']resource["\']\s+type=["\']application/json["\']>\s*([^<]+)</script>', embed_html, re.IGNORECASE) or \
+                               re.search(r'<script\s+id=["\']initial-state["\']\s+type=["\']application/json["\']>\s*([^<]+)</script>', embed_html, re.IGNORECASE)
+                if script_match:
+                    try:
+                        res_data = json.loads(script_match.group(1))
+                        tracks_data = []
+
+                        def find_tracks_recursive(obj):
+                            if isinstance(obj, dict):
+                                if "tracks" in obj and "items" in obj["tracks"]:
+                                    return obj["tracks"]["items"]
+                                if "tracks" in obj and isinstance(obj["tracks"], list):
+                                    return obj["tracks"]
+                                for k, v in obj.items():
+                                    res = find_tracks_recursive(v)
+                                    if res:
+                                        return res
+                            elif isinstance(obj, list):
+                                for x in obj:
+                                    res = find_tracks_recursive(x)
+                                    if res:
+                                        return res
+                            return None
+
+                        items = find_tracks_recursive(res_data)
+                        if not items and "tracks" in res_data:
+                            items = res_data["tracks"]
+                        if not items and "items" in res_data:
+                            items = res_data["items"]
+
+                        if items:
+                            for x in items:
+                                track_info = x.get("track") or x
+                                if track_info and "name" in track_info:
+                                    artists_str = ", ".join([a["name"] for a in track_info.get("artists", [])]) if "artists" in track_info else "Unknown Artist"
+                                    tracks_data.append({
+                                        "title": track_info["name"],
+                                        "artist": artists_str,
+                                        "url": f"https://open.spotify.com/track/{track_info.get('id')}" if track_info.get('id') else ""
+                                    })
+                            if tracks_data:
+                                return tracks_data
+                    except Exception as parse_err:
+                        print(f"Spotify embed JSON parsing failed: {parse_err}")
+
+            # Approach B: Scrape standard playlist HTML page links and try to fetch metadata
+            url = f"https://open.spotify.com/playlist/{playlist_id}"
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.ok:
+                html = res.text
+                tracks_data = []
+                track_links = re.findall(r"spotify\.com/track/([a-zA-Z0-9]+)", html)
+                if track_links:
+                    seen = set()
+                    for tid in track_links:
+                        if len(tracks_data) >= 100:
+                            break
+                        if tid not in seen:
+                            seen.add(tid)
+                            try:
+                                details = self.get_track_details(tid)
+                                if details:
+                                    tracks_data.append(details)
+                            except Exception:
+                                pass
+                if tracks_data:
+                    return tracks_data
+        except Exception as e:
+            print(f"Public Spotify playlist extraction failed: {e}")
+
+        raise Exception("No se pudo obtener la playlist de Spotify públicamente (se requiere API configurada).")
+
     def get_playlist_tracks(self, playlist_id):
         if not self.sp:
-            raise Exception("Spotify Playlist resolution requires Spotify API Configuration (SPOTIFY_CLIENT_ID & SPOTIFY_CLIENT_SECRET) in Streamlit settings.")
+            return self.public_get_playlist_tracks(playlist_id)
         try:
             tracks_data = []
             results = self.sp.playlist_items(playlist_id)
@@ -197,7 +280,8 @@ class SpotifyService:
                     break
             return tracks_data
         except Exception as e:
-            raise Exception(f"Failed to fetch Spotify playlist: {e}")
+            print(f"Spotify API playlist retrieval failed, falling back to public lookup: {e}")
+            return self.public_get_playlist_tracks(playlist_id)
 
     def public_search_track(self, title, artist):
         try:
@@ -291,7 +375,12 @@ class SpotifyService:
                     "artist": ", ".join([a["name"] for a in track["artists"]]),
                     "url": f"https://open.spotify.com/track/{track['id']}"
                 })
+                
+            if not candidates:
+                print("No API candidates found, falling back to Spotify public search")
+                return self.public_search_track(title, artist)
+                
             return candidates
         except Exception as e:
-            print(f"Spotify track search error: {e}")
-            return []
+            print(f"Spotify track search error, falling back to public search: {e}")
+            return self.public_search_track(title, artist)
