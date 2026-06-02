@@ -215,4 +215,8 @@ Return only a JSON object matching this schema:
                 best_score = score
                 best_candidate = candidate
                 
-        return best_candidate, best_score, self.classify_match(best_score)[0]
+        status = self.classify_match(best_score)[0]
+        if status == "Not Found" or best_score < 0.60:
+            return None, best_score, "Not Found"
+            
+        return best_candidate, best_score, status

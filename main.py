@@ -163,6 +163,17 @@ st.markdown("""
         border: 1px solid #ff007f;
     }
     
+    .btn-disabled {
+        background: #1e293b !important;
+        background-color: #1e293b !important;
+        color: #64748b !important;
+        border: 1px solid #334155 !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+        pointer-events: none !important;
+        opacity: 0.65;
+    }
+    
     .btn-text {
         display: flex;
         align-items: center;
@@ -349,7 +360,7 @@ if convert_btn:
                             best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
                             if best_cand:
                                 sp_link = best_cand["url"]
-                                matched_scores.append(score)
+                            matched_scores.append(score)
                                 
                         # Get YouTube Music target
                         if detected_platform != "YouTube Music":
@@ -357,7 +368,7 @@ if convert_btn:
                             best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
                             if best_cand:
                                 yt_link = best_cand["url"]
-                                matched_scores.append(score)
+                            matched_scores.append(score)
                                 
                         # Get Deezer target
                         if detected_platform != "Deezer":
@@ -365,25 +376,50 @@ if convert_btn:
                             best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
                             if best_cand:
                                 dz_link = best_cand["url"]
-                                matched_scores.append(score)
-
-                    # Dynamic search backup construction
-                    encoded_query = urllib.parse.quote(f"{artist} {title}")
-                    if sp_link == "N/A":
-                        sp_link = f"https://open.spotify.com/search/{encoded_query}"
-                    if yt_link == "N/A":
-                        yt_link = f"https://music.youtube.com/search?q={encoded_query}"
-                    if dz_link == "N/A":
-                        dz_link = f"https://www.deezer.com/search/{encoded_query}"
+                            matched_scores.append(score)
 
                     # Compute matching quality
-                    avg_score = sum(matched_scores) / len(matched_scores) if matched_scores else 1.0
+                    avg_score = sum(matched_scores) / len(matched_scores) if matched_scores else 0.0
                     if avg_score >= 0.85:
                         qual_col = "🟢 Coincidencia Exacta / High Accuracy"
                     elif avg_score >= 0.60:
                         qual_col = "🟡 Coincidencia Cercana / Check Match"
                     else:
                         qual_col = "🔵 Búsqueda Directa Fallback / Search Query Link"
+
+                    # Generate HTML buttons dynamically based on whether link was matched
+                    if sp_link != "N/A" and sp_link:
+                        sp_btn = f"""<a href='{sp_link}' target='_blank' class='platform-btn btn-spotify'>
+                            <span class='btn-text'>🟢 Escuchar en Spotify</span>
+                            <span class='badge-platforms'>ABRIR / OPEN</span>
+                        </a>"""
+                    else:
+                        sp_btn = """<div class='platform-btn btn-disabled'>
+                            <span class='btn-text'>🟢 No disponible en Spotify</span>
+                            <span class='badge-platforms'>N/A</span>
+                        </div>"""
+
+                    if yt_link != "N/A" and yt_link:
+                        yt_btn = f"""<a href='{yt_link}' target='_blank' class='platform-btn btn-youtube'>
+                            <span class='btn-text'>🔴 Escuchar en YouTube Music</span>
+                            <span class='badge-platforms'>ABRIR / OPEN</span>
+                        </a>"""
+                    else:
+                        yt_btn = """<div class='platform-btn btn-disabled'>
+                            <span class='btn-text'>🔴 No disponible en YouTube Music</span>
+                            <span class='badge-platforms'>N/A</span>
+                        </div>"""
+
+                    if dz_link != "N/A" and dz_link:
+                        dz_btn = f"""<a href='{dz_link}' target='_blank' class='platform-btn btn-deezer btn-deezer-actual'>
+                            <span class='btn-text'>🎵 Escuchar en Deezer</span>
+                            <span class='badge-platforms'>ABRIR / OPEN</span>
+                        </a>"""
+                    else:
+                        dz_btn = """<div class='platform-btn btn-disabled'>
+                            <span class='btn-text'>🎵 No disponible en Deezer</span>
+                            <span class='badge-platforms'>N/A</span>
+                        </div>"""
 
                     # Beautiful single card display
                     st.markdown(f"""<div class='track-result-card'>
@@ -394,20 +430,14 @@ if convert_btn:
     <span class='badge-platforms'>{qual_col} (Confianza: {int(avg_score * 100)}%)</span>
 </div>
 <div class='platform-link-container'>
-    <a href='{sp_link}' target='_blank' class='platform-btn btn-spotify'>
-        <span class='btn-text'>🟢 Escuchar en Spotify</span>
-        <span class='badge-platforms'>ABRIR / OPEN</span>
-    </a>
-    <a href='{yt_link}' target='_blank' class='platform-btn btn-youtube'>
-        <span class='btn-text'>🔴 Escuchar en YouTube Music</span>
-        <span class='badge-platforms'>ABRIR / OPEN</span>
-    </a>
-    <a href='{dz_link}' target='_blank' class='platform-btn btn-deezer btn-deezer-actual'>
-        <span class='btn-text'>🎵 Escuchar en Deezer</span>
-        <span class='badge-platforms'>ABRIR / OPEN</span>
-    </a>
+    {sp_btn}
+    {yt_btn}
+    {dz_btn}
 </div>
 </div>""", unsafe_allow_html=True)
+                    
+                    if avg_score < 0.60:
+                        st.warning("⚠️ **Aviso de coincidencia:** No pudimos confirmar coincidencias exactas para este enlace en todas las plataformas. Esto suele ocurrir si la URL ingresada no es una pista musical (por ejemplo, un videotutorial) o si no está disponible comercialmente en estos catálogos.")
                     
                 # ====== RENDER PLAYLIST VISUALIZER ======
                 else: 
@@ -422,22 +452,22 @@ if convert_btn:
                         row = {
                             "Canción / Song": p_title,
                             "Artista / Artist": p_artist,
-                            "Spotify Link": "N/A",
-                            "YouTube Link": "N/A",
-                            "Deezer Link": "N/A",
+                            "Spotify Link": None,
+                            "YouTube Link": None,
+                            "Deezer Link": None,
                             "Resultado / Status": "Exact Match",
                             "Confianza / Match Score": 1.0
                         }
                         
-                        p_sp_link, p_yt_link, p_dz_link = "N/A", "N/A", "N/A"
+                        p_sp_link, p_yt_link, p_dz_link = None, None, None
                         scores = []
                         
                         if detected_platform == "Spotify":
-                            p_sp_link = track.get("url", "N/A")
+                            p_sp_link = track.get("url", None)
                         elif detected_platform == "YouTube Music":
-                            p_yt_link = track.get("url", "N/A")
+                            p_yt_link = track.get("url", None)
                         elif detected_platform == "Deezer":
-                            p_dz_link = track.get("url", "N/A")
+                            p_dz_link = track.get("url", None)
                             
                         # Search Spotify
                         if detected_platform != "Spotify":
@@ -445,7 +475,7 @@ if convert_btn:
                             best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
                             if best_cand:
                                 p_sp_link = best_cand["url"]
-                                scores.append(score)
+                            scores.append(score)
                                 
                         # Search YouTube Music
                         if detected_platform != "YouTube Music":
@@ -453,7 +483,7 @@ if convert_btn:
                             best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
                             if best_cand:
                                 p_yt_link = best_cand["url"]
-                                scores.append(score)
+                            scores.append(score)
                                 
                         # Search Deezer
                         if detected_platform != "Deezer":
@@ -461,22 +491,13 @@ if convert_btn:
                             best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
                             if best_cand:
                                 p_dz_link = best_cand["url"]
-                                scores.append(score)
-
-                        # Backup Search Queries
-                        encoded = urllib.parse.quote(f"{p_artist} {p_title}")
-                        if p_sp_link == "N/A":
-                            p_sp_link = f"https://open.spotify.com/search/{encoded}"
-                        if p_yt_link == "N/A":
-                            p_yt_link = f"https://music.youtube.com/search?q={encoded}"
-                        if p_dz_link == "N/A":
-                            p_dz_link = f"https://www.deezer.com/search/{encoded}"
+                            scores.append(score)
 
                         row["Spotify Link"] = p_sp_link
                         row["YouTube Link"] = p_yt_link
                         row["Deezer Link"] = p_dz_link
                         
-                        mean_score = sum(scores) / len(scores) if scores else 1.0
+                        mean_score = sum(scores) / len(scores) if scores else 0.0
                         row["Confianza / Match Score"] = round(mean_score, 2)
                         
                         if mean_score >= 0.85:
@@ -484,7 +505,7 @@ if convert_btn:
                         elif mean_score >= 0.60:
                             row["Resultado / Status"] = "🟨 Intermedio / Fuzzy Match"
                         else:
-                            row["Resultado / Status"] = "🟦 Búsqueda Directa"
+                            row["Resultado / Status"] = "🟦 No Encontrado"
                             
                         results.append(row)
                         progress_bar.progress((i + 1) / len(tracks_to_match))
