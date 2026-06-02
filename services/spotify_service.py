@@ -188,9 +188,62 @@ class SpotifyService:
         except Exception as e:
             raise Exception(f"Failed to fetch Spotify playlist: {e}")
 
+    def public_search_track(self, title, artist):
+        try:
+            clean_title = re.sub(r"[\(\[][Oo]fficial[\s\w]*[\)\]]", "", title, flags=re.IGNORECASE).strip()
+            clean_artist = artist.replace(" - Topic", "").strip()
+            
+            # Remove parentheses / brackets contents for search cleanliness
+            clean_title = re.sub(r"[\(\[].*?[\)\]]", "", clean_title).strip()
+            
+            # Form queries to try
+            queries = [
+                f'site:open.spotify.com/track "{clean_artist}" "{clean_title}"',
+                f"site:open.spotify.com/track {clean_artist} {clean_title}",
+                f"{clean_artist} {clean_title} spotify track"
+            ]
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9"
+            }
+            
+            seen_ids = set()
+            candidates = []
+            
+            for q in queries:
+                if len(candidates) >= 3:
+                    break
+                try:
+                    encoded_q = requests.utils.quote(q)
+                    url = f"https://html.duckduckgo.com/html/?q={encoded_q}"
+                    res = requests.get(url, headers=headers, timeout=8)
+                    if res.ok:
+                        html = res.text
+                        # Match both standard track URLs and international track URLs e.g. /intl-es/track/XYZ
+                        track_ids = re.findall(r"spotify\.com/(?:[a-zA-Z0-9_-]+/)?track/([a-zA-Z0-9]+)", html)
+                        for tid in track_ids:
+                            if tid not in seen_ids:
+                                seen_ids.add(tid)
+                                try:
+                                    det = self.get_track_details(tid)
+                                    if det and det.get("title"):
+                                        candidates.append(det)
+                                        if len(candidates) >= 5:
+                                            break
+                                except Exception as e_det:
+                                    print(f"Failed to fetch public details for candidate {tid}: {e_det}")
+                except Exception as e_strat:
+                    print(f"Spotify public search strategy failed for '{q}': {e_strat}")
+            
+            return candidates
+        except Exception as e:
+            print(f"Spotify public track search error: {e}")
+            return []
+
     def search_track(self, title, artist):
         if not self.sp:
-            return []
+            return self.public_search_track(title, artist)
         try:
             clean_title = re.sub(r"[\(\[][Oo]fficial[\s\w]*[\)\]]", "", title, flags=re.IGNORECASE).strip()
             clean_artist = artist.replace(" - Topic", "").strip()

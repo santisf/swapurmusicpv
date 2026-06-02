@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 import os
+import json
+import re
+import requests
 from dotenv import load_dotenv
 
 # Import our custom services and matcher
@@ -12,6 +15,84 @@ from utils.matcher import Matcher
 
 # Load environment variables
 load_dotenv()
+
+def resolve_via_songlink(url):
+    try:
+        encoded_url = urllib.parse.quote(url)
+        songlink_api = f"https://api.song.link/v1-alpha.1/links?url={encoded_url}"
+        res = requests.get(songlink_api, timeout=10)
+        if res.ok:
+            data = res.json()
+            links = data.get("linksByPlatform", {})
+            
+            sp_url = links.get("spotify", {}).get("url")
+            yt_url = links.get("youtubeMusic", {}).get("url") or links.get("youtube", {}).get("url")
+            dz_url = links.get("deezer", {}).get("url")
+            
+            return {
+                "spotify": sp_url,
+                "youtube": yt_url,
+                "deezer": dz_url
+            }
+    except Exception as e:
+        print(f"Songlink resolution error: {e}")
+    return {}
+
+
+# Import Gemini if available
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GENAI_LIB = True
+except ImportError:
+    HAS_GENAI_LIB = False
+
+@st.cache_resource
+def get_gemini_client():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key and api_key != "MY_GEMINI_API_KEY" and HAS_GENAI_LIB:
+        try:
+            return genai.Client(api_key=api_key)
+        except Exception as e:
+            print(f"Error initializing Gemini Client in main.py: {e}")
+    return None
+
+def parse_song_with_gemini(user_message, client):
+    if not client or not HAS_GENAI_LIB:
+        # Simplistic offline parsing fallback if Gemini key is missing or error
+        match = re.search(r'(?:buscar|busca|búscame|escuchar|escucha)\s+(.+?)(?:\s+(?:de|by)\s+(.+))?$', user_message, re.IGNORECASE)
+        if match:
+            return {"song_found": True, "title": match.group(1).strip(), "artist": match.group(2).strip() if match.group(2) else ""}
+        return {"song_found": True, "title": user_message.strip(), "artist": ""}
+        
+    syst_instruct = """
+    Eres el clasificador de texto de SwapUrMusic. Tu única misión es extraer el NOMBRE DE LA CANCIÓN y el ARTISTA de la petición del usuario.
+    Responde estrictamente en formato JSON con la siguiente estructura, sin bloques de código, sin markdown, sin texto adicional:
+    {
+      "song_found": true/false (si el mensaje del usuario expresa clara intención de buscar una canción o pista específica),
+      "title": "nombre de la pista encontrada" (o vacío si no se encuentra),
+      "artist": "nombre del músico, grupo o artista" (o de Topic, o vacío si no se encuentra)
+    }
+    Ejemplos:
+    - User: "búscame Creo de Callejeros" -> {"song_found": true, "title": "Creo", "artist": "Callejeros"}
+    - User: "quiero escuchar dios es un stalker de rosalia" -> {"song_found": true, "title": "Dios Es Un Stalker", "artist": "ROSALÍA"}
+    - User: "pon la cancion de callejeros creo" -> {"song_found": true, "title": "Creo", "artist": "Callejeros"}
+    - User: "hola, qué tal estás?" -> {"song_found": false, "title": "", "artist": ""}
+    """
+    try:
+        response = client.models.generateContent(
+            model="gemini-3.5-flash",
+            contents=user_message,
+            config=types.GenerateContentConfig(
+                systemInstruction=syst_instruct,
+                responseMimeType="application/json",
+                temperature=0.1
+            )
+        )
+        return json.loads(response.text.strip())
+    except Exception as e:
+        print(f"Gemini parse exception: {e}")
+        return {"song_found": True, "title": user_message.strip(), "artist": ""}
 
 # Set page config
 st.set_page_config(
@@ -248,303 +329,370 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown("<h1 class='main-title'>SwapUrMusic</h1>", unsafe_allow_html=True)
-st.markdown("<p class='main-subtitle'>Convierte y comparte tus canciones y listas de reproducción al instante / Match and swap your music links</p>", unsafe_allow_html=True)
+if True:
+    st.markdown("<h1 class='main-title'>SwapUrMusic</h1>", unsafe_allow_html=True)
+    st.markdown("<p class='main-subtitle'>Convierte y comparte tus canciones y listas de reproducción al instante / Match and swap your music links</p>", unsafe_allow_html=True)
 
-# Main Form Container (Native container with custom styling overrides)
-with st.container(border=True):
-    input_url = st.text_input(
-        "💡 Enlace de canción o Playlist / Song or Playlist Link:", 
-        placeholder="Pega un enlace de Spotify, YouTube o Deezer..."
-    )
+    # Main Form Container (Native container with custom styling overrides)
+    with st.container(border=True):
+        input_url = st.text_input(
+            "💡 Enlace de canción o Playlist / Song or Playlist Link:", 
+            placeholder="Pega un enlace de Spotify, YouTube o Deezer...",
+            key="converter_input_url"
+        )
 
-    source_platform = st.selectbox(
-        "Plataforma de Origen / Source Platform:",
-        ["Detectar Automáticamente (Recomendado)", "Spotify", "YouTube Music", "Deezer"]
-    )
+        source_platform = st.selectbox(
+            "Plataforma de Origen / Source Platform:",
+            ["Detectar Automáticamente (Recomendado)", "Spotify", "YouTube Music", "Deezer"],
+            key="converter_source_platform"
+        )
 
-    st.markdown("<div style='margin-top: 1.5rem;'>", unsafe_allow_html=True)
-    convert_btn = st.button("🚀 Convertir Enlace / Convert Link", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 1.5rem;'>", unsafe_allow_html=True)
+        convert_btn = st.button("🚀 Convertir Enlace / Convert Link", use_container_width=True, key="converter_btn")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# Main logic loop
-if convert_btn:
-    if not input_url:
-        st.error("Por favor ingresa un enlace válido antes de continuar.")
-    else:
-        detected_platform = None
-        source_id = None
-        media_type = None  # "track" or "playlist"
-        
-        # Determine source platform logic
-        if "Detectar Automáticamente" in source_platform:
-            if "spotify.com" in input_url:
-                detected_platform = "Spotify"
-                media_type, source_id = spotify_service.extract_id(input_url)
-            elif "youtube.com" in input_url or "youtu.be" in input_url or "music.youtube.com" in input_url:
-                detected_platform = "YouTube Music"
-                media_type, source_id = youtube_service.extract_id(input_url)
-            elif "deezer.com" in input_url or "deezer.page.link" in input_url or "link.deezer.com" in input_url:
-                detected_platform = "Deezer"
-                media_type, source_id = deezer_service.extract_id(input_url)
+    # Main logic loop
+    if convert_btn:
+        if not input_url:
+            st.error("Por favor ingresa un enlace válido antes de continuar.")
+        else:
+            detected_platform = None
+            source_id = None
+            media_type = None  # "track" or "playlist"
+            
+            # Determine source platform logic
+            if "Detectar Automáticamente" in source_platform:
+                if "spotify.com" in input_url:
+                    detected_platform = "Spotify"
+                    media_type, source_id = spotify_service.extract_id(input_url)
+                elif "youtube.com" in input_url or "youtu.be" in input_url or "music.youtube.com" in input_url:
+                    detected_platform = "YouTube Music"
+                    media_type, source_id = youtube_service.extract_id(input_url)
+                elif "deezer.com" in input_url or "deezer.page.link" in input_url or "link.deezer.com" in input_url:
+                    detected_platform = "Deezer"
+                    media_type, source_id = deezer_service.extract_id(input_url)
+                else:
+                    st.error("No se pudo detectar la plataforma de origen automáticamente. Por favor selecciónala de forma manual.")
             else:
-                st.error("No se pudo detectar la plataforma de origen automáticamente. Por favor selecciónala de forma manual.")
-        else:
-            detected_platform = source_platform
-            if detected_platform == "Spotify":
-                media_type, source_id = spotify_service.extract_id(input_url)
-            elif detected_platform == "YouTube Music":
-                media_type, source_id = youtube_service.extract_id(input_url)
-            elif detected_platform == "Deezer":
-                media_type, source_id = deezer_service.extract_id(input_url)
+                detected_platform = source_platform
+                if detected_platform == "Spotify":
+                    media_type, source_id = spotify_service.extract_id(input_url)
+                elif detected_platform == "YouTube Music":
+                    media_type, source_id = youtube_service.extract_id(input_url)
+                elif detected_platform == "Deezer":
+                    media_type, source_id = deezer_service.extract_id(input_url)
 
-        if not source_id or not media_type:
-            st.error("Formato de URL no reconocido. Asegúrate de copiar un enlace de canción (track) or lista de reproducción (playlist) válido.")
-        else:
-            tracks_to_match = []
-            with st.spinner("Buscando metadatos originales..."):
-                try:
+            if not source_id or not media_type:
+                st.error("Formato de URL no reconocido. Asegúrate de copiar un enlace de canción (track) o lista de reproducción (playlist) válido.")
+            else:
+                tracks_to_match = []
+                with st.spinner("Buscando metadatos originales..."):
+                    try:
+                        if media_type == "track":
+                            if detected_platform == "Spotify":
+                                tracks_to_match.append(spotify_service.get_track_details(source_id))
+                            elif detected_platform == "YouTube Music":
+                                tracks_to_match.append(youtube_service.get_track_details(source_id))
+                            elif detected_platform == "Deezer":
+                                tracks_to_match.append(deezer_service.get_track_details(source_id))
+                        else:  # Playlist
+                            if detected_platform == "Spotify":
+                                tracks_to_match = spotify_service.get_playlist_tracks(source_id)
+                            elif detected_platform == "YouTube Music":
+                                tracks_to_match = youtube_service.get_playlist_tracks(source_id)
+                            elif detected_platform == "Deezer":
+                                tracks_to_match = deezer_service.get_playlist_tracks(source_id)
+                    except Exception as ex:
+                        import traceback
+                        st.error(f"Error cargando metadatos originales: {ex}")
+                        st.text(traceback.format_exc())
+                        if os.path.exists("/debug_py.txt"):
+                            st.subheader("Depuración interna / Diagnostic Log:")
+                            with open("/debug_py.txt") as df:
+                                st.code(df.read())
+                        elif os.path.exists("./debug_py.txt"):
+                            st.subheader("Depuración interna / Diagnostic Log:")
+                            with open("./debug_py.txt") as df:
+                                st.code(df.read())
+                        tracks_to_match = []
+
+                if tracks_to_match:
+                    # ====== RENDER TRACK CARD (SINGLE TRACK CONVERSION) ======
                     if media_type == "track":
+                        orig_track = tracks_to_match[0]
+                        title = orig_track.get("title", "")
+                        artist = orig_track.get("artist", "")
+                        
+                        st.toast("🎉 ¡Canción encontrada con éxito!", icon="🎵")
+                        
+                        # Search destination links
+                        sp_link, yt_link, dz_link = "N/A", "N/A", "N/A"
+                        matched_scores = []
+                        
+                        # Store original link
                         if detected_platform == "Spotify":
-                            tracks_to_match.append(spotify_service.get_track_details(source_id))
+                            sp_link = orig_track.get("url", "N/A")
                         elif detected_platform == "YouTube Music":
-                            tracks_to_match.append(youtube_service.get_track_details(source_id))
+                            yt_link = orig_track.get("url", "N/A")
                         elif detected_platform == "Deezer":
-                            tracks_to_match.append(deezer_service.get_track_details(source_id))
-                    else:  # Playlist
-                        if detected_platform == "Spotify":
-                            tracks_to_match = spotify_service.get_playlist_tracks(source_id)
-                        elif detected_platform == "YouTube Music":
-                            tracks_to_match = youtube_service.get_playlist_tracks(source_id)
-                        elif detected_platform == "Deezer":
-                            tracks_to_match = deezer_service.get_playlist_tracks(source_id)
-                except Exception as ex:
-                    import traceback
-                    st.error(f"Error cargando metadatos originales: {ex}")
-                    st.text(traceback.format_exc())
-                    if os.path.exists("/debug_py.txt"):
-                        st.subheader("Depuración interna / Diagnostic Log:")
-                        with open("/debug_py.txt") as df:
-                            st.code(df.read())
-                    elif os.path.exists("./debug_py.txt"):
-                        st.subheader("Depuración interna / Diagnostic Log:")
-                        with open("./debug_py.txt") as df:
-                            st.code(df.read())
-                    tracks_to_match = []
-
-            if tracks_to_match:
-                # ====== RENDER TRAC CARD (SINGLE TRACK CONVERSION) ======
-                if media_type == "track":
-                    orig_track = tracks_to_match[0]
-                    title = orig_track.get("title", "")
-                    artist = orig_track.get("artist", "")
-                    
-                    st.toast("🎉 ¡Canción encontrada con éxito!", icon="🎵")
-                    
-                    # Search destination links
-                    sp_link, yt_link, dz_link = "N/A", "N/A", "N/A"
-                    matched_scores = []
-                    
-                    # Store original link
-                    if detected_platform == "Spotify":
-                        sp_link = orig_track.get("url", "N/A")
-                    elif detected_platform == "YouTube Music":
-                        yt_link = orig_track.get("url", "N/A")
-                    elif detected_platform == "Deezer":
-                        dz_link = orig_track.get("url", "N/A")
-                        
-                    with st.spinner("Buscando coincidencias de precisión en otras plataformas..."):
-                        # Get Spotify target
-                        if detected_platform != "Spotify":
-                            candidates = spotify_service.search_track(title, artist)
-                            best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
-                            if best_cand:
-                                sp_link = best_cand["url"]
-                            matched_scores.append(score)
-                                
-                        # Get YouTube Music target
-                        if detected_platform != "YouTube Music":
-                            candidates = youtube_service.search_track(title, artist)
-                            best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
-                            if best_cand:
-                                yt_link = best_cand["url"]
-                            matched_scores.append(score)
-                                
-                        # Get Deezer target
-                        if detected_platform != "Deezer":
-                            candidates = deezer_service.search_track(title, artist)
-                            best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
-                            if best_cand:
-                                dz_link = best_cand["url"]
-                            matched_scores.append(score)
-
-                    # Compute matching quality
-                    avg_score = sum(matched_scores) / len(matched_scores) if matched_scores else 0.0
-                    if avg_score >= 0.85:
-                        qual_col = "🟢 Coincidencia Exacta / High Accuracy"
-                    elif avg_score >= 0.60:
-                        qual_col = "🟡 Coincidencia Cercana / Check Match"
-                    else:
-                        qual_col = "🔵 Búsqueda Directa Fallback / Search Query Link"
-
-                    # Generate HTML buttons dynamically based on whether link was matched
-                    if sp_link != "N/A" and sp_link:
-                        sp_btn = f"""<a href='{sp_link}' target='_blank' class='platform-btn btn-spotify'>
-                            <span class='btn-text'>🟢 Escuchar en Spotify</span>
-                            <span class='badge-platforms'>ABRIR / OPEN</span>
-                        </a>"""
-                    else:
-                        sp_btn = """<div class='platform-btn btn-disabled'>
-                            <span class='btn-text'>🟢 No disponible en Spotify</span>
-                            <span class='badge-platforms'>N/A</span>
-                        </div>"""
-
-                    if yt_link != "N/A" and yt_link:
-                        yt_btn = f"""<a href='{yt_link}' target='_blank' class='platform-btn btn-youtube'>
-                            <span class='btn-text'>🔴 Escuchar en YouTube Music</span>
-                            <span class='badge-platforms'>ABRIR / OPEN</span>
-                        </a>"""
-                    else:
-                        yt_btn = """<div class='platform-btn btn-disabled'>
-                            <span class='btn-text'>🔴 No disponible en YouTube Music</span>
-                            <span class='badge-platforms'>N/A</span>
-                        </div>"""
-
-                    if dz_link != "N/A" and dz_link:
-                        dz_btn = f"""<a href='{dz_link}' target='_blank' class='platform-btn btn-deezer btn-deezer-actual'>
-                            <span class='btn-text'>🎵 Escuchar en Deezer</span>
-                            <span class='badge-platforms'>ABRIR / OPEN</span>
-                        </a>"""
-                    else:
-                        dz_btn = """<div class='platform-btn btn-disabled'>
-                            <span class='btn-text'>🎵 No disponible en Deezer</span>
-                            <span class='badge-platforms'>N/A</span>
-                        </div>"""
-
-                    # Beautiful single card display
-                    st.markdown(f"""<div class='track-result-card'>
-<div style='font-size: 3rem; margin-bottom: 0.5rem;'>🎵</div>
-<div class='track-title'>{title}</div>
-<div class='track-artist'>{artist}</div>
-<div style='margin-bottom: 2rem;'>
-    <span class='badge-platforms'>{qual_col} (Confianza: {int(avg_score * 100)}%)</span>
-</div>
-<div class='platform-link-container'>
-    {sp_btn}
-    {yt_btn}
-    {dz_btn}
-</div>
-</div>""", unsafe_allow_html=True)
-                    
-                    if avg_score < 0.60:
-                        st.warning("⚠️ **Aviso de coincidencia:** No pudimos confirmar coincidencias exactas para este enlace en todas las plataformas. Esto suele ocurrir si la URL ingresada no es una pista musical (por ejemplo, un videotutorial) o si no está disponible comercialmente en estos catálogos.")
-                    
-                # ====== RENDER PLAYLIST VISUALIZER ======
-                else: 
-                    st.toast(f"🎉 Se importó un playlist con {len(tracks_to_match)} canciones.", icon="📋")
-                    results = []
-                    progress_bar = st.progress(0)
-                    
-                    for i, track in enumerate(tracks_to_match):
-                        p_title = track.get("title", "")
-                        p_artist = track.get("artist", "")
-                        
-                        row = {
-                            "Canción / Song": p_title,
-                            "Artista / Artist": p_artist,
-                            "Spotify Link": None,
-                            "YouTube Link": None,
-                            "Deezer Link": None,
-                            "Resultado / Status": "Exact Match",
-                            "Confianza / Match Score": 1.0
-                        }
-                        
-                        p_sp_link, p_yt_link, p_dz_link = None, None, None
-                        scores = []
-                        
-                        if detected_platform == "Spotify":
-                            p_sp_link = track.get("url", None)
-                        elif detected_platform == "YouTube Music":
-                            p_yt_link = track.get("url", None)
-                        elif detected_platform == "Deezer":
-                            p_dz_link = track.get("url", None)
+                            dz_link = orig_track.get("url", "N/A")
                             
-                        # Search Spotify
-                        if detected_platform != "Spotify":
-                            candidates = spotify_service.search_track(p_title, p_artist)
-                            best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
-                            if best_cand:
-                                p_sp_link = best_cand["url"]
-                            scores.append(score)
-                                
-                        # Search YouTube Music
-                        if detected_platform != "YouTube Music":
-                            candidates = youtube_service.search_track(p_title, p_artist)
-                            best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
-                            if best_cand:
-                                p_yt_link = best_cand["url"]
-                            scores.append(score)
-                                
-                        # Search Deezer
-                        if detected_platform != "Deezer":
-                            candidates = deezer_service.search_track(p_title, p_artist)
-                            best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
-                            if best_cand:
-                                p_dz_link = best_cand["url"]
-                            scores.append(score)
+                        with st.spinner("Buscando coincidencias de precisión en otras plataformas..."):
+                            # Try Songlink first as a high-precision helper!
+                            sl_res = resolve_via_songlink(input_url)
+                            
+                            # Get Spotify target
+                            if detected_platform != "Spotify":
+                                sp_link = sl_res.get("spotify") or "N/A"
+                                if sp_link == "N/A" or not sp_link:
+                                    candidates = spotify_service.search_track(title, artist)
+                                    best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
+                                    if best_cand:
+                                        sp_link = best_cand["url"]
+                                        matched_scores.append(score)
+                                    else:
+                                        matched_scores.append(0.0)
+                                else:
+                                    matched_scores.append(1.0)
+                                    
+                            # Get YouTube Music target
+                            if detected_platform != "YouTube Music":
+                                yt_link = sl_res.get("youtube") or "N/A"
+                                if yt_link == "N/A" or not yt_link:
+                                    candidates = youtube_service.search_track(title, artist)
+                                    best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
+                                    if best_cand:
+                                        yt_link = best_cand["url"]
+                                        matched_scores.append(score)
+                                    else:
+                                        matched_scores.append(0.0)
+                                else:
+                                    matched_scores.append(1.0)
+                                    
+                            # Get Deezer target
+                            if detected_platform != "Deezer":
+                                dz_link = sl_res.get("deezer") or "N/A"
+                                if dz_link == "N/A" or not dz_link:
+                                    candidates = deezer_service.search_track(title, artist)
+                                    best_cand, score, _ = matcher.find_best_match(title, artist, candidates)
+                                    if best_cand:
+                                        dz_link = best_cand["url"]
+                                        matched_scores.append(score)
+                                    else:
+                                        matched_scores.append(0.0)
+                                else:
+                                    matched_scores.append(1.0)
 
-                        row["Spotify Link"] = p_sp_link
-                        row["YouTube Link"] = p_yt_link
-                        row["Deezer Link"] = p_dz_link
-                        
-                        mean_score = sum(scores) / len(scores) if scores else 0.0
-                        row["Confianza / Match Score"] = round(mean_score, 2)
-                        
-                        if mean_score >= 0.85:
-                            row["Resultado / Status"] = "🟩 Alta Precisión / Exact Match"
-                        elif mean_score >= 0.60:
-                            row["Resultado / Status"] = "🟨 Intermedio / Fuzzy Match"
+                        # Compute matching quality
+                        avg_score = sum(matched_scores) / len(matched_scores) if matched_scores else 0.0
+                        if avg_score >= 0.85:
+                            qual_col = "🟢 Coincidencia Exacta / High Accuracy"
+                        elif avg_score >= 0.60:
+                            qual_col = "🟡 Coincidencia Cercana / Check Match"
                         else:
-                            row["Resultado / Status"] = "🟦 No Encontrado"
-                            
-                        results.append(row)
-                        progress_bar.progress((i + 1) / len(tracks_to_match))
+                            qual_col = "🔵 Búsqueda Directa Fallback / Search Query Link"
+
+                        # Generate HTML buttons dynamically based on whether link was matched
+                        if sp_link != "N/A" and sp_link:
+                            sp_btn = f"""<a href='{sp_link}' target='_blank' class='platform-btn btn-spotify'>
+                                <span class='btn-text'>🟢 Escuchar en Spotify</span>
+                                <span class='badge-platforms'>ABRIR / OPEN</span>
+                            </a>"""
+                        else:
+                            sp_btn = """<div class='platform-btn btn-disabled'>
+                                <span class='btn-text'>🟢 No disponible en Spotify</span>
+                                <span class='badge-platforms'>N/A</span>
+                            </div>"""
+
+                        if yt_link != "N/A" and yt_link:
+                            yt_btn = f"""<a href='{yt_link}' target='_blank' class='platform-btn btn-youtube'>
+                                <span class='btn-text'>🔴 Escuchar en YouTube Music</span>
+                                <span class='badge-platforms'>ABRIR / OPEN</span>
+                            </a>"""
+                        else:
+                            yt_btn = """<div class='platform-btn btn-disabled'>
+                                <span class='btn-text'>🔴 No disponible en YouTube Music</span>
+                                <span class='badge-platforms'>N/A</span>
+                            </div>"""
+
+                        if dz_link != "N/A" and dz_link:
+                            dz_btn = f"""<a href='{dz_link}' target='_blank' class='platform-btn btn-deezer btn-deezer-actual'>
+                                <span class='btn-text'>🎵 Escuchar en Deezer</span>
+                                <span class='badge-platforms'>ABRIR / OPEN</span>
+                            </a>"""
+                        else:
+                            dz_btn = """<div class='platform-btn btn-disabled'>
+                                <span class='btn-text'>🎵 No disponible en Deezer</span>
+                                <span class='badge-platforms'>N/A</span>
+                            </div>"""
+
+                        # Beautiful single card display
+                        st.markdown(f"""<div class='track-result-card'>
+    <div style='font-size: 3rem; margin-bottom: 0.5rem;'>🎵</div>
+    <div class='track-title'>{title}</div>
+    <div class='track-artist'>{artist}</div>
+    <div style='margin-bottom: 2rem;'>
+        <span class='badge-platforms'>{qual_col} (Confianza: {int(avg_score * 100)}%)</span>
+    </div>
+    <div class='platform-link-container'>
+        {sp_btn}
+        {yt_btn}
+        {dz_btn}
+    </div>
+    </div>""", unsafe_allow_html=True)
                         
-                    st.success(f"🎉 Conversión finalizada con éxito.")
-                    
-                    df = pd.DataFrame(results)
-                    
-                    st.subheader("🎉 Canciones Convertidas / Converted Playlists")
-                    st.dataframe(
-                        df,
-                        column_config={
-                            "Spotify Link": st.column_config.LinkColumn("Enlace Spotify", max_chars=100),
-                            "YouTube Link": st.column_config.LinkColumn("YouTube Music", max_chars=100),
-                            "Deezer Link": st.column_config.LinkColumn("Deezer Link", max_chars=100),
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                    
-                    # Metrics and Action
-                    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
-                    col1, col2 = st.columns(2)
-                    
-                    total = len(results)
-                    exact = sum(1 for r in results if "Alta Precisión" in r["Resultado / Status"])
-                    
-                    col1.metric("Total Canciones", total)
-                    col2.metric("Coincidencias Exactas", f"{exact} / {total} ({int(exact/total*100)}%)" if total else "0/0")
-                    
-                    # CSV Export
-                    csv = df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Descargar Playlist Convertida (CSV) / Export Playlist CSV",
-                        data=csv,
-                        file_name="swap_ur_music_playlist.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
+                        if avg_score < 0.60:
+                            st.warning("⚠️ **Aviso de coincidencia:** No pudimos confirmar coincidencias exactas para este enlace en todas las plataformas. Esto suele ocurrir si la URL ingresada no es una pista musical (por ejemplo, un videotutorial o tutorial técnico) o si no está disponible comercialmente en estos catálogos.")
+                        
+                    # ====== RENDER PLAYLIST VISUALIZER ======
+                    else: 
+                        st.toast(f"🎉 Se importó un playlist con {len(tracks_to_match)} canciones.", icon="📋")
+                        results = []
+                        progress_bar = st.progress(0)
+                        
+                        for i, track in enumerate(tracks_to_match):
+                            p_title = track.get("title", "")
+                            p_artist = track.get("artist", "")
+                            
+                            row = {
+                                "Canción / Song": p_title,
+                                "Artista / Artist": p_artist,
+                                "Spotify Link": None,
+                                "YouTube Link": None,
+                                "Deezer Link": None,
+                                "Resultado / Status": "Exact Match",
+                                "Confianza / Match Score": 1.0
+                            }
+                            
+                            p_sp_link, p_yt_link, p_dz_link = None, None, None
+                            scores = []
+                            
+                            if detected_platform == "Spotify":
+                                p_sp_link = track.get("url", None)
+                            elif detected_platform == "YouTube Music":
+                                p_yt_link = track.get("url", None)
+                            elif detected_platform == "Deezer":
+                                p_dz_link = track.get("url", None)
+                                
+                            # Search Spotify
+                            if detected_platform != "Spotify":
+                                candidates = spotify_service.search_track(p_title, p_artist)
+                                best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
+                                if best_cand:
+                                    p_sp_link = best_cand["url"]
+                                scores.append(score)
+                                    
+                            # Search YouTube Music
+                            if detected_platform != "YouTube Music":
+                                candidates = youtube_service.search_track(p_title, p_artist)
+                                best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
+                                if best_cand:
+                                    p_yt_link = best_cand["url"]
+                                scores.append(score)
+                                    
+                            # Search Deezer
+                            if detected_platform != "Deezer":
+                                candidates = deezer_service.search_track(p_title, p_artist)
+                                best_cand, score, _ = matcher.find_best_match(p_title, p_artist, candidates)
+                                if best_cand:
+                                    p_dz_link = best_cand["url"]
+                                scores.append(score)
+
+                            row["Spotify Link"] = p_sp_link
+                            row["YouTube Link"] = p_yt_link
+                            row["Deezer Link"] = p_dz_link
+                            
+                            mean_score = sum(scores) / len(scores) if scores else 0.0
+                            row["Confianza / Match Score"] = round(mean_score, 2)
+                            
+                            if mean_score >= 0.85:
+                                row["Resultado / Status"] = "🟩 Alta Precisión / Exact Match"
+                            elif mean_score >= 0.60:
+                                row["Resultado / Status"] = "🟨 Intermedio / Fuzzy Match"
+                            else:
+                                row["Resultado / Status"] = "🟦 No Encontrado"
+                                
+                            results.append(row)
+                            progress_bar.progress((i + 1) / len(tracks_to_match))
+                            
+                        st.success(f"🎉 Conversión finalizada con éxito.")
+                        
+                        df = pd.DataFrame(results)
+                        
+                        st.subheader("🎉 Canciones Convertidas / Converted Playlists")
+                        st.dataframe(
+                            df,
+                            column_config={
+                                "Spotify Link": st.column_config.LinkColumn("Enlace Spotify", max_chars=100),
+                                "YouTube Link": st.column_config.LinkColumn("YouTube Music", max_chars=100),
+                                "Deezer Link": st.column_config.LinkColumn("Deezer Link", max_chars=100),
+                            },
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        # Metrics and Action
+                        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+                        col1, col2 = st.columns(2)
+                        
+                        total = len(results)
+                        exact = sum(1 for r in results if "Alta Precisión" in r["Resultado / Status"])
+                        
+                        col1.metric("Total Canciones", total)
+                        col2.metric("Coincidencias Exactas", f"{exact} / {total} ({int(exact/total*100)}%)" if total else "0/0")
+                        
+                        # CSV Export
+                        csv = df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Descargar Playlist Convertida (CSV) / Export Playlist CSV",
+                            data=csv,
+                            file_name="swap_ur_music_playlist.csv",
+                            mime="text/csv",
+                            use_container_width=True,
+                            key="download_csv_btn"
+                        )
+
+# The chatbot features have been disabled per user directive (with tab2: deleted)
+
+# --- SIDEBAR SYSTEM ADJUSTMENTS ---
+with st.sidebar:
+    st.markdown("### 🛠️ Ajustes del Sistema")
+    if not spotify_service.is_configured():
+        st.warning("⚠️ **Spotify API desconectado:** Las búsquedas nativas de Spotify están inactivas. Añade `SPOTIFY_CLIENT_ID` y `SPOTIFY_CLIENT_SECRET` en los Secretos para máxima precisión.")
+    else:
+        st.success("🟢 Spotify API Conectado")
+        
+    st.markdown("---")
+    st.markdown("### 💻 Claude Code Local Integration Guide")
+    with st.expander("📝 Copiar Prompt para tu PC"):
+        st.markdown("""
+        **Paso 1:** Descarga o clona este repositorio en tu PC.
+        
+        **Paso 2:** Instala las dependencias necesarias:
+        ```bash
+        pip install -r requirements.txt
+        ```
+        
+        **Paso 3:** Corre la aplicación localmente:
+        ```bash
+        streamlit run main.py
+        ```
+         
+        **Paso 4:** Invoca **Claude Code** en el directorio raíz de este proyecto y pégale el siguiente prompt contextual para explicaciones o adición de features:
+        """)
+        
+        prompt_text = """Hola Claude. Estoy desarrollando SwapUrMusic, una aplicación premium en Streamlit para convertir canciones y listas de reproducción entre Spotify, YouTube Music y Deezer.
+        
+El proyecto tiene la siguiente arquitectura:
+1. 'main.py': Interfaz de usuario (Streamlit) con pestañas para conversión manual y un chatbot inteligente interactivo con Gemini.
+2. 'services/spotify_service.py': Interacción con Spotipy y scrapers oEmbed/directos públicos de backup.
+3. 'services/youtube_service.py': Obtención de metadatos de YouTube Music vía API o RSS/XML feeds públicos para playlists.
+4. 'services/deezer_service.py': Resolución y búsquedas en Deezer usando endpoints públicos y gratuitos.
+5. 'utils/matcher.py': Lógica analítica de matching usando algoritmos fuzzy (RapidFuzz) y modelos AI semánticos.
+
+Por favor, ayúdame a optimizar el mapeo de pistas, mejorar los algoritmos de heurística en caso de no-coincidencias, y robustecer la experiencia de usuario general."""
+        
+        st.text_area("Copiar Prompt / Copy Prompt:", value=prompt_text, height=250)
 
 # Elegant Footer
 st.markdown("""
