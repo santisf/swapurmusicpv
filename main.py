@@ -18,7 +18,30 @@ load_dotenv()
 
 def resolve_via_songlink(url):
     try:
-        encoded_url = urllib.parse.quote(url)
+        # Clean URL to maximize Songlink mapping accuracy
+        clean_url = url
+        if "youtu.be" in url:
+            match = re.search(r"youtu\.be/([a-zA-Z0-9_-]+)", url)
+            if match:
+                video_id = match.group(1)
+                clean_url = f"https://www.youtube.com/watch?v={video_id}"
+        elif "youtube.com/watch" in url:
+            parsed = urllib.parse.urlparse(url)
+            q_params = urllib.parse.parse_qs(parsed.query)
+            v_val = q_params.get("v")
+            if v_val:
+                clean_url = f"https://www.youtube.com/watch?v={v_val[0]}"
+        elif "spotify.com" in url:
+            parsed = urllib.parse.urlparse(url)
+            track_match = re.search(r"/track/([a-zA-Z0-9]+)", parsed.path)
+            if track_match:
+                clean_url = f"https://open.spotify.com/track/{track_match.group(1)}"
+            else:
+                playlist_match = re.search(r"/playlist/([a-zA-Z0-9]+)", parsed.path)
+                if playlist_match:
+                    clean_url = f"https://open.spotify.com/playlist/{playlist_match.group(1)}"
+
+        encoded_url = urllib.parse.quote(clean_url)
         songlink_api = f"https://api.song.link/v1-alpha.1/links?url={encoded_url}"
         res = requests.get(songlink_api, timeout=10)
         if res.ok:
@@ -37,6 +60,42 @@ def resolve_via_songlink(url):
     except Exception as e:
         print(f"Songlink resolution error: {e}")
     return {}
+
+def search_via_gemini_grounding(title, artist, platform):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "MY_GEMINI_API_KEY" or not HAS_GENAI_LIB:
+        return None
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = f"Busca en Google y encuentra el enlace oficial de {platform} para la canción '{title}' de '{artist}'."
+        system_inst = f"Eres un asistente de búsqueda musical de SwapUrMusic. Tu único objetivo es encontrar el enlace correspondiente a {platform} para la canción especificada de este artista. Utiliza la herramienta de búsqueda de Google. Responde ÚNICAMENTE con la URL directa encontrada. No incluyas explicaciones, ni introducciones, ni bloques de código, solo la URL."
+        
+        response = client.models.generateContent(
+            model="gemini-3.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[{"googleSearch": {}}],
+                temperature=0.1,
+                systemInstruction=system_inst
+            )
+        )
+        
+        text = response.text.strip() if response.text else ""
+        if platform == "Spotify":
+            match = re.search(r"https://open\.spotify\.com/(?:[a-zA-Z0-9_-]+/)?track/([a-zA-Z0-9]+)", text)
+            if match:
+                return f"https://open.spotify.com/track/{match.group(1)}"
+        elif platform == "YouTube Music":
+            match = re.search(r"https://(?:music\.|www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})", text) or re.search(r"https://youtu\.be/([a-zA-Z0-9_-]{11})", text)
+            if match:
+                return f"https://music.youtube.com/watch?v={match.group(1)}"
+        elif platform == "Deezer":
+            match = re.search(r"https://(?:www\.)?deezer\.com/(?:[a-zA-Z0-9_-]+/)?track/([0-9]+)", text)
+            if match:
+                return f"https://www.deezer.com/track/{match.group(1)}"
+    except Exception as e:
+        print(f"Gemini grounding search for {platform} failed: {e}")
+    return None
 
 
 # Import Gemini if available
@@ -451,7 +510,12 @@ if True:
                                         sp_link = best_cand["url"]
                                         matched_scores.append(score)
                                     else:
-                                        matched_scores.append(0.0)
+                                        gem_link = search_via_gemini_grounding(title, artist, "Spotify")
+                                        if gem_link:
+                                            sp_link = gem_link
+                                            matched_scores.append(0.95)
+                                        else:
+                                            matched_scores.append(0.0)
                                 else:
                                     matched_scores.append(1.0)
                                     
@@ -465,7 +529,12 @@ if True:
                                         yt_link = best_cand["url"]
                                         matched_scores.append(score)
                                     else:
-                                        matched_scores.append(0.0)
+                                        gem_link = search_via_gemini_grounding(title, artist, "YouTube Music")
+                                        if gem_link:
+                                            yt_link = gem_link
+                                            matched_scores.append(0.95)
+                                        else:
+                                            matched_scores.append(0.0)
                                 else:
                                     matched_scores.append(1.0)
                                     
@@ -479,7 +548,12 @@ if True:
                                         dz_link = best_cand["url"]
                                         matched_scores.append(score)
                                     else:
-                                        matched_scores.append(0.0)
+                                        gem_link = search_via_gemini_grounding(title, artist, "Deezer")
+                                        if gem_link:
+                                            dz_link = gem_link
+                                            matched_scores.append(0.95)
+                                        else:
+                                            matched_scores.append(0.0)
                                 else:
                                     matched_scores.append(1.0)
 
@@ -651,48 +725,6 @@ if True:
                             use_container_width=True,
                             key="download_csv_btn"
                         )
-
-# The chatbot features have been disabled per user directive (with tab2: deleted)
-
-# --- SIDEBAR SYSTEM ADJUSTMENTS ---
-with st.sidebar:
-    st.markdown("### 🛠️ Ajustes del Sistema")
-    if not spotify_service.is_configured():
-        st.warning("⚠️ **Spotify API desconectado:** Las búsquedas nativas de Spotify están inactivas. Añade `SPOTIFY_CLIENT_ID` y `SPOTIFY_CLIENT_SECRET` en los Secretos para máxima precisión.")
-    else:
-        st.success("🟢 Spotify API Conectado")
-        
-    st.markdown("---")
-    st.markdown("### 💻 Claude Code Local Integration Guide")
-    with st.expander("📝 Copiar Prompt para tu PC"):
-        st.markdown("""
-        **Paso 1:** Descarga o clona este repositorio en tu PC.
-        
-        **Paso 2:** Instala las dependencias necesarias:
-        ```bash
-        pip install -r requirements.txt
-        ```
-        
-        **Paso 3:** Corre la aplicación localmente:
-        ```bash
-        streamlit run main.py
-        ```
-         
-        **Paso 4:** Invoca **Claude Code** en el directorio raíz de este proyecto y pégale el siguiente prompt contextual para explicaciones o adición de features:
-        """)
-        
-        prompt_text = """Hola Claude. Estoy desarrollando SwapUrMusic, una aplicación premium en Streamlit para convertir canciones y listas de reproducción entre Spotify, YouTube Music y Deezer.
-        
-El proyecto tiene la siguiente arquitectura:
-1. 'main.py': Interfaz de usuario (Streamlit) con pestañas para conversión manual y un chatbot inteligente interactivo con Gemini.
-2. 'services/spotify_service.py': Interacción con Spotipy y scrapers oEmbed/directos públicos de backup.
-3. 'services/youtube_service.py': Obtención de metadatos de YouTube Music vía API o RSS/XML feeds públicos para playlists.
-4. 'services/deezer_service.py': Resolución y búsquedas en Deezer usando endpoints públicos y gratuitos.
-5. 'utils/matcher.py': Lógica analítica de matching usando algoritmos fuzzy (RapidFuzz) y modelos AI semánticos.
-
-Por favor, ayúdame a optimizar el mapeo de pistas, mejorar los algoritmos de heurística en caso de no-coincidencias, y robustecer la experiencia de usuario general."""
-        
-        st.text_area("Copiar Prompt / Copy Prompt:", value=prompt_text, height=250)
 
 # Elegant Footer
 st.markdown("""
