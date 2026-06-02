@@ -18,6 +18,14 @@ except Exception:
 # Try Gemini API client as primary serverless AI fallback
 HAS_GEMINI = False
 gemini_api_key = os.getenv("GEMINI_API_KEY")
+if not gemini_api_key or gemini_api_key == "MY_GEMINI_API_KEY":
+    try:
+        import streamlit as st
+        if "GEMINI_API_KEY" in st.secrets:
+            gemini_api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+
 if gemini_api_key and gemini_api_key != "MY_GEMINI_API_KEY":
     try:
         # We can support either the modern google-genai or legacy google-generativeai

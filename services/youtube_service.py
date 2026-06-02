@@ -9,6 +9,14 @@ class YouTubeService:
     def __init__(self):
         self.api_key = os.getenv("YOUTUBE_API_KEY")
         self.yt = None
+
+        if not self.api_key:
+            try:
+                import streamlit as st
+                if "YOUTUBE_API_KEY" in st.secrets:
+                    self.api_key = st.secrets["YOUTUBE_API_KEY"]
+            except Exception:
+                pass
         
         if self.api_key:
             try:

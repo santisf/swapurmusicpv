@@ -63,6 +63,12 @@ def resolve_via_songlink(url):
 
 def search_via_gemini_grounding(title, artist, platform):
     api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "MY_GEMINI_API_KEY":
+        try:
+            if "GEMINI_API_KEY" in st.secrets:
+                api_key = st.secrets["GEMINI_API_KEY"]
+        except Exception:
+            pass
     if not api_key or api_key == "MY_GEMINI_API_KEY" or not HAS_GENAI_LIB:
         return None
     try:
@@ -109,6 +115,12 @@ except ImportError:
 @st.cache_resource
 def get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "MY_GEMINI_API_KEY":
+        try:
+            if "GEMINI_API_KEY" in st.secrets:
+                api_key = st.secrets["GEMINI_API_KEY"]
+        except Exception:
+            pass
     if api_key and api_key != "MY_GEMINI_API_KEY" and HAS_GENAI_LIB:
         try:
             return genai.Client(api_key=api_key)

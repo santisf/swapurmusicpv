@@ -10,6 +10,17 @@ class SpotifyService:
         self.client_id = os.getenv("SPOTIFY_CLIENT_ID")
         self.client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
         self.sp = None
+
+        # Try to read credentials from Streamlit secrets if not found in environmental variables
+        if not self.client_id or not self.client_secret:
+            try:
+                import streamlit as st
+                if "SPOTIFY_CLIENT_ID" in st.secrets:
+                    self.client_id = st.secrets["SPOTIFY_CLIENT_ID"]
+                if "SPOTIFY_CLIENT_SECRET" in st.secrets:
+                    self.client_secret = st.secrets["SPOTIFY_CLIENT_SECRET"]
+            except Exception as se:
+                print(f"Could not read Spotify secrets from Streamlit: {se}")
         
         if self.client_id and self.client_secret:
             try:
