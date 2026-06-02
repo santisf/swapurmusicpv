@@ -8,12 +8,8 @@ try:
 except ImportError:
     HAS_RAPIDFUZZ = False
 
-# Try local sentence-transformers as secondary local AI fallback
-try:
-    from sentence_transformers import SentenceTransformer, util
-    HAS_SENTENCE_TRANSFORMERS = True
-except Exception:
-    HAS_SENTENCE_TRANSFORMERS = False
+# Disable local sentence-transformers to avoid memory/OOM crashes on container boot
+HAS_SENTENCE_TRANSFORMERS = False
 
 # Try Gemini API client as primary serverless AI fallback
 HAS_GEMINI = False
@@ -146,7 +142,7 @@ Return only a JSON object matching this schema:
 }}"""
                 if USE_NEW_SDK:
                     res = ai_client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.5-flash',
                         contents=prompt,
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json"
@@ -154,7 +150,7 @@ Return only a JSON object matching this schema:
                     )
                     text_out = res.text
                 else:
-                    model = gen_ai.GenerativeModel('gemini-2.5-flash')
+                    model = gen_ai.GenerativeModel('gemini-3.5-flash')
                     res = model.generate_content(
                         prompt,
                         generation_config={"response_mime_type": "application/json"}

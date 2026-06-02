@@ -76,13 +76,13 @@ def search_via_gemini_grounding(title, artist, platform):
         prompt = f"Busca en Google y encuentra el enlace oficial de {platform} para la canción '{title}' de '{artist}'."
         system_inst = f"Eres un asistente de búsqueda musical de SwapUrMusic. Tu único objetivo es encontrar el enlace correspondiente a {platform} para la canción especificada de este artista. Utiliza la herramienta de búsqueda de Google. Responde ÚNICAMENTE con la URL directa encontrada. No incluyas explicaciones, ni introducciones, ni bloques de código, solo la URL."
         
-        response = client.models.generateContent(
+        response = client.models.generate_content(
             model="gemini-3.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
-                tools=[{"googleSearch": {}}],
+                tools=[{"google_search": {}}],
                 temperature=0.1,
-                systemInstruction=system_inst
+                system_instruction=system_inst
             )
         )
         
@@ -151,12 +151,12 @@ def parse_song_with_gemini(user_message, client):
     - User: "hola, qué tal estás?" -> {"song_found": false, "title": "", "artist": ""}
     """
     try:
-        response = client.models.generateContent(
+        response = client.models.generate_content(
             model="gemini-3.5-flash",
             contents=user_message,
             config=types.GenerateContentConfig(
-                systemInstruction=syst_instruct,
-                responseMimeType="application/json",
+                system_instruction=syst_instruct,
+                response_mime_type="application/json",
                 temperature=0.1
             )
         )
